@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 
-use crate::macros::{Dialect, MacroError};
+use crate::macros::{Dialect, MacroContext, MacroError, expand};
 use crate::rule::SignalRule;
 use crate::{AnalysisWindow, SignalRow};
 
@@ -51,9 +51,20 @@ pub async fn query_signal_rule<B: QueryBackend + ?Sized>(
     rule: &SignalRule,
     window: &AnalysisWindow,
 ) -> Result<Vec<SignalRow>, SignalQueryError> {
-    todo!(
-        "expand {} for {window:?} and run it on {:?}",
-        rule.id,
-        backend.dialect()
-    )
+    let context = MacroContext {
+        dialect: backend.dialect(),
+        window,
+        params: &rule.params,
+    };
+    let sql = expand(&rule.sql, &context).map_err(|source| SignalQueryError::Macro {
+        rule_id: rule.id.clone(),
+        source,
+    })?;
+    backend
+        .query_signals(&sql)
+        .await
+        .map_err(|source| SignalQueryError::Backend {
+            rule_id: rule.id.clone(),
+            source,
+        })
 }
