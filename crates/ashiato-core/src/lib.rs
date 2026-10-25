@@ -5,6 +5,7 @@ pub mod macros;
 pub mod query;
 pub mod record;
 pub mod rule;
+pub mod sequence;
 mod severity;
 mod signal;
 mod tactic;
