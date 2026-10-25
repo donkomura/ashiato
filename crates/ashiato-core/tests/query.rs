@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 
+use ashiato_core::lineage::LineageEdge;
 use ashiato_core::macros::{Dialect, MacroError};
 use ashiato_core::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
 use ashiato_core::rule::{Rule, RuleFile, RuleSet, SignalRule};
@@ -35,6 +36,13 @@ impl QueryBackend for FakeBackend {
     async fn query_signals(&self, sql: &str) -> Result<Vec<SignalRow>, BackendError> {
         self.received_sql.lock().unwrap().push(sql.to_owned());
         (self.response)()
+    }
+
+    async fn query_lineage(
+        &self,
+        _window: &AnalysisWindow,
+    ) -> Result<Vec<LineageEdge>, BackendError> {
+        Ok(Vec::new())
     }
 }
 
