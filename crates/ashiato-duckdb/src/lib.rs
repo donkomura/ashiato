@@ -21,6 +21,7 @@ pub enum IngestError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct IngestSummary {
     pub files: usize,
+    pub skipped_files: usize,
     pub events: usize,
 }
 
@@ -43,6 +44,7 @@ impl EventStore {
         }
         Ok(IngestSummary {
             files: files.len(),
+            skipped_files: 0,
             events,
         })
     }
