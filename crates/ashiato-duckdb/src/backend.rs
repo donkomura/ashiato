@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ashiato_core::lineage::LineageEdge;
+use ashiato_core::lineage::{Caller, Federation, LineageEdge};
 use ashiato_core::macros::Dialect;
 use ashiato_core::query::{BackendError, QueryBackend};
 use ashiato_core::{AnalysisWindow, SignalRow};
@@ -12,6 +12,7 @@ use duckdb::arrow::datatypes::DataType;
 use duckdb::types::Value;
 
 const ATTR_PREFIX: &str = "attr_";
+const LINEAGE_EDGES_SQL: &str = include_str!("../sql/lineage_edges.sql");
 
 pub struct DuckDbBackend {
     connection: Arc<Mutex<duckdb::Connection>>,
@@ -52,8 +53,15 @@ impl QueryBackend for DuckDbBackend {
         &self,
         window: &AnalysisWindow,
     ) -> Result<Vec<LineageEdge>, BackendError> {
-        let _ = window;
-        todo!()
+        let connection = Arc::clone(&self.connection);
+        let since = sql_timestamp(window.baseline_since());
+        let until = sql_timestamp(window.until());
+        tokio::task::spawn_blocking(move || {
+            let connection = connection.lock().unwrap_or_else(PoisonError::into_inner);
+            query_lineage(&connection, &since, &until)
+        })
+        .await
+        .map_err(|error| BackendError::Query(Box::new(error)))?
     }
 }
 
@@ -72,6 +80,44 @@ fn query_signals(
         signals.push(columns.read(row)?);
     }
     Ok(signals)
+}
+
+// Sessions used in the analysis period may have been issued during the baseline period,
+// so edges are taken from the start of the baseline period.
+fn query_lineage(
+    connection: &duckdb::Connection,
+    since: &str,
+    until: &str,
+) -> Result<Vec<LineageEdge>, BackendError> {
+    let mut statement = connection.prepare(LINEAGE_EDGES_SQL).map_err(query_error)?;
+    let edges = statement
+        .query_map([since, until], |row| {
+            let federation = match (row.get(10)?, row.get(11)?) {
+                (Some(provider), Some(subject)) => Some(Federation { provider, subject }),
+                _ => None,
+            };
+            Ok(LineageEdge {
+                child_access_key_id: row.get(0)?,
+                parent: Caller {
+                    access_key_id: row.get(1)?,
+                    principal_key: row.get(2)?,
+                    principal_arn: row.get(3)?,
+                    identity_type: row.get(4)?,
+                    account_id: row.get(5)?,
+                    invoked_by: row.get(6)?,
+                },
+                role_arn: row.get(7)?,
+                issued_by_event_id: row.get(8)?,
+                cross_account: row.get(9)?,
+                federation,
+            })
+        })
+        .map_err(query_error)?;
+    edges.collect::<Result<_, _>>().map_err(query_error)
+}
+
+fn sql_timestamp(time: DateTime<Utc>) -> String {
+    time.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
 }
 
 struct Column {
