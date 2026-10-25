@@ -6,7 +6,7 @@ members = ["crates/ashiato-core", "crates/ashiato-duckdb", "crates/ashiato-cli"]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-rust-version = "1.85"
+rust-version = "1.99"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
