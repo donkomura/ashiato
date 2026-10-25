@@ -156,3 +156,31 @@ async fn role_chain_escalation_is_attributed_to_the_user_at_the_top_of_the_chain
         ]
     );
 }
+
+#[tokio::test]
+async fn leaked_key_recon_persistence_includes_the_optional_enumeration_when_present() {
+    let with_enumeration = analyze_builtin_fixture(
+        "leaked_key_recon_persistence/fixtures/positive/probe_enumerate_persist.json",
+    )
+    .await;
+    let without_enumeration = analyze_builtin_fixture(
+        "leaked_key_recon_persistence/fixtures/positive/probe_persist.json",
+    )
+    .await;
+
+    let expected = |enumeration: usize| {
+        vec![vec![
+            ("first_seen_identity_probe".to_owned(), 1),
+            ("access_denied_enumeration".to_owned(), enumeration),
+            ("iam_persistence".to_owned(), 1),
+        ]]
+    };
+    assert_eq!(
+        step_signal_counts(&with_enumeration, "leaked_key_recon_persistence"),
+        expected(1)
+    );
+    assert_eq!(
+        step_signal_counts(&without_enumeration, "leaked_key_recon_persistence"),
+        expected(0)
+    );
+}

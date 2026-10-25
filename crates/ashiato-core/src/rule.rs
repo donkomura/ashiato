@@ -30,6 +30,8 @@ pub struct SignalRule {
     pub params: BTreeMap<String, serde_json::Value>,
     #[serde(default)]
     pub attrs: Vec<String>,
+    #[serde(default)]
+    pub external_source_only: bool,
     pub sql: String,
 }
 

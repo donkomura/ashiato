@@ -105,15 +105,54 @@ async fn query_signal_rule_sends_the_sql_with_macros_expanded() {
 
     query_signal_rule(&backend, &rule, &window()).await.unwrap();
 
-    assert_eq!(
-        backend.received_sql(),
-        vec![
+    let received = backend.received_sql();
+    assert_eq!(received.len(), 1);
+    assert!(
+        received[0].ends_with(
             "SELECT * FROM events\n\
              WHERE (event_time >= TIMESTAMP '2026-10-01 00:00:00' \
              AND event_time < TIMESTAMP '2026-10-02 00:00:00')\n\
              HAVING count(*) >= 3\n"
-                .to_owned()
-        ]
+        ),
+        "{}",
+        received[0]
+    );
+}
+
+#[tokio::test]
+async fn query_signal_rule_puts_the_baseline_ctes_before_the_rule_sql() {
+    let backend = FakeBackend::returning(|| Ok(Vec::new()));
+    let rule = signal_rule("SELECT * FROM baseline");
+
+    query_signal_rule(&backend, &rule, &window()).await.unwrap();
+
+    let sql = &backend.received_sql()[0];
+    assert!(sql.starts_with("WITH baseline AS ("), "{sql}");
+    assert!(sql.contains("baseline_principals AS ("), "{sql}");
+    assert!(
+        sql.contains(
+            "(event_time >= TIMESTAMP '2026-09-01 00:00:00' \
+             AND event_time < TIMESTAMP '2026-10-01 00:00:00')"
+        ),
+        "the baseline CTEs must be limited to the baseline window: {sql}"
+    );
+    assert!(!sql.contains("{{"), "{sql}");
+    assert!(sql.ends_with("\nSELECT * FROM baseline\n"), "{sql}");
+}
+
+#[tokio::test]
+async fn query_signal_rule_merges_the_baseline_ctes_into_the_with_clause_of_the_rule() {
+    let backend = FakeBackend::returning(|| Ok(Vec::new()));
+    let rule = signal_rule("with recent AS (SELECT 1)\nSELECT * FROM recent");
+
+    query_signal_rule(&backend, &rule, &window()).await.unwrap();
+
+    let sql = &backend.received_sql()[0];
+    assert!(sql.starts_with("WITH baseline AS ("), "{sql}");
+    assert_eq!(sql.to_lowercase().matches("with ").count(), 1, "{sql}");
+    assert!(
+        sql.ends_with("recent AS (SELECT 1)\nSELECT * FROM recent\n"),
+        "{sql}"
     );
 }
 

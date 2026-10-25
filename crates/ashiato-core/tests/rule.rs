@@ -131,6 +131,18 @@ fn optional_keys_of_signal_rule_have_defaults() {
     assert!(rule.requires.is_empty());
     assert!(rule.params.is_empty());
     assert!(rule.attrs.is_empty());
+    assert!(!rule.external_source_only);
+}
+
+#[test]
+fn external_source_only_is_read_from_signal_rule() {
+    let content = signal("probe", &[]) + "external_source_only: true\n";
+
+    let Rule::Signal(rule) = parse_one(&content).unwrap() else {
+        panic!("expected a signal rule");
+    };
+
+    assert!(rule.external_source_only);
 }
 
 #[test]

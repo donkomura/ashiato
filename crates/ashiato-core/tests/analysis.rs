@@ -83,8 +83,9 @@ impl QueryBackend for FakeBackend {
 
     async fn query_signals(&self, sql: &str) -> Result<Vec<SignalRow>, BackendError> {
         self.signals
-            .get(sql.trim())
-            .cloned()
+            .iter()
+            .find(|(rule_sql, _)| sql.trim_end().ends_with(rule_sql.as_str()))
+            .map(|(_, rows)| rows.clone())
             .ok_or_else(|| BackendError::MissingColumn {
                 column: "start_time".to_owned(),
             })
