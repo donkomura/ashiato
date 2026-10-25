@@ -66,8 +66,7 @@ fn ingest_creates_workspace_and_loads_local_logs() {
     assert_eq!(events, 2);
 }
 
-#[test]
-fn ingest_rejects_s3_source_as_unsupported() {
+fn assert_ingest_fails(source: &str, extra_args: &[&str], message: &str) {
     let dir = TempDir::new().unwrap();
 
     let output = ashiato()
@@ -75,15 +74,45 @@ fn ingest_rejects_s3_source_as_unsupported() {
         .arg("--workspace")
         .arg(dir.path().join("case"))
         .arg("--source")
-        .arg("s3://trail-bucket/AWSLogs/")
+        .arg(source)
+        .args(extra_args)
         .output()
         .unwrap();
 
     assert!(!output.status.success());
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("not supported"),
+        String::from_utf8_lossy(&output.stderr).contains(message),
         "stderr: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn ingest_rejects_s3_filters_for_local_sources() {
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().to_string_lossy();
+
+    for args in [
+        ["--accounts", "111111111111"],
+        ["--regions", "us-east-1"],
+        ["--from", "2026-10-01"],
+        ["--to", "2026-10-01"],
+    ] {
+        assert_ingest_fails(&source, &args, "only to S3 sources");
+    }
+}
+
+#[test]
+fn ingest_rejects_s3_uri_without_bucket() {
+    assert_ingest_fails("s3:///AWSLogs/", &[], "bucket");
+}
+
+#[test]
+fn ingest_rejects_from_after_to() {
+    assert_ingest_fails(
+        "s3://trail-bucket/AWSLogs/",
+        &["--from", "2026-10-02", "--to", "2026-10-01"],
+        "--from must not be after --to",
     );
 }
 
