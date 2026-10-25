@@ -1,4 +1,5 @@
 pub mod record;
+pub mod rule;
 mod severity;
 mod signal;
 mod tactic;
