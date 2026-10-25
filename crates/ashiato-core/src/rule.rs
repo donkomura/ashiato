@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use include_dir::{Dir, include_dir};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{Duration, Severity, Tactic};
@@ -157,7 +157,7 @@ impl RuleSet {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RuleSetDigest {
     pub id: String,
     pub digest: String,

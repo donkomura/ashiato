@@ -1,6 +1,6 @@
 use ashiato_core::fixture::{Expectation, Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::rule::{RuleFile, RuleSet, Rules};
-use ashiato_duckdb::fixture::{FixtureReport, FixtureRunError, Verdict, run_fixture};
+use ashiato_duckdb::fixture::{Detections, FixtureReport, FixtureRunError, Verdict, run_fixture};
 use serde_json::{Value, json};
 
 const CONSOLE_LOGIN: &str = r#"
@@ -126,7 +126,7 @@ async fn positive_fixture_without_signals_fails_with_the_rule_id_and_file_name()
         report.verdict,
         Verdict::Failed {
             expectation: Expectation::Positive,
-            signals: 0,
+            detections: Detections::Signals(0),
         }
     );
     assert_failure_names_rule_and_file(&report, "no_login.json");
@@ -144,7 +144,7 @@ async fn negative_fixture_with_signals_fails_with_the_rule_id_and_file_name() {
         report.verdict,
         Verdict::Failed {
             expectation: Expectation::Negative,
-            signals: 2,
+            detections: Detections::Signals(2),
         }
     );
     assert_failure_names_rule_and_file(&report, "two_logins.json");
@@ -182,14 +182,81 @@ async fn each_fixture_runs_on_its_own_database() {
 }
 
 #[tokio::test]
-async fn scenario_fixtures_are_skipped() {
+async fn positive_scenario_fixture_with_a_match_passes() {
     let report = run(
         "repeated_console_login/fixtures/positive/two_logins.json",
         json!([console_login(), console_login()]),
     )
     .await;
 
-    assert_eq!(report.verdict, Verdict::Skipped);
+    assert_eq!(report.verdict, Verdict::Passed);
+}
+
+#[tokio::test]
+async fn negative_scenario_fixture_without_matches_passes() {
+    let report = run(
+        "repeated_console_login/fixtures/negative/one_login.json",
+        json!([console_login(), other_event()]),
+    )
+    .await;
+
+    assert_eq!(report.verdict, Verdict::Passed);
+}
+
+#[tokio::test]
+async fn positive_scenario_fixture_without_matches_fails_with_the_rule_id_and_file_name() {
+    let report = run(
+        "repeated_console_login/fixtures/positive/one_login.json",
+        json!([console_login()]),
+    )
+    .await;
+
+    assert_eq!(
+        report.verdict,
+        Verdict::Failed {
+            expectation: Expectation::Positive,
+            detections: Detections::ScenarioMatches(0),
+        }
+    );
+    let message = report.to_string();
+    assert!(message.contains("repeated_console_login"), "{message}");
+    assert!(message.contains("one_login.json"), "{message}");
+    assert!(message.contains("scenario match"), "{message}");
+}
+
+#[tokio::test]
+async fn negative_scenario_fixture_with_a_match_fails() {
+    let report = run(
+        "repeated_console_login/fixtures/negative/two_logins.json",
+        json!([console_login(), console_login()]),
+    )
+    .await;
+
+    assert_eq!(
+        report.verdict,
+        Verdict::Failed {
+            expectation: Expectation::Negative,
+            detections: Detections::ScenarioMatches(1),
+        }
+    );
+}
+
+#[tokio::test]
+async fn scenario_fixtures_only_match_within_one_origin() {
+    let mut bob_login = console_login();
+    bob_login["userIdentity"] = json!({
+        "type": "IAMUser",
+        "arn": "arn:aws:iam::111111111111:user/bob",
+        "accessKeyId": "AKIABOB",
+    });
+
+    let report = run(
+        "repeated_console_login/fixtures/negative/two_users.json",
+        json!([console_login(), bob_login]),
+    )
+    .await;
+
+    assert_eq!(report.verdict, Verdict::Passed);
 }
 
 #[tokio::test]

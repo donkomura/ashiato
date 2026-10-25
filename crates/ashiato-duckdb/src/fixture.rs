@@ -18,9 +18,14 @@ pub enum Verdict {
     Passed,
     Failed {
         expectation: Expectation,
-        signals: usize,
+        detections: Detections,
     },
-    Skipped,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Detections {
+    Signals(usize),
+    ScenarioMatches(usize),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -54,22 +59,43 @@ impl fmt::Display for FixtureReport {
             Verdict::Passed => write!(f, "PASS {rule_id} ({path})"),
             Verdict::Failed {
                 expectation: Expectation::Positive,
-                ..
+                detections,
             } => write!(
                 f,
-                "FAIL {rule_id} ({path}): expected at least one signal, but got none"
+                "FAIL {rule_id} ({path}): expected at least one {}, but got none",
+                detections.noun()
             ),
             Verdict::Failed {
                 expectation: Expectation::Negative,
-                signals,
+                detections,
             } => write!(
                 f,
-                "FAIL {rule_id} ({path}): expected no signals, but got {signals}"
+                "FAIL {rule_id} ({path}): expected no {}, but got {}",
+                detections.plural_noun(),
+                detections.count()
             ),
-            Verdict::Skipped => write!(
-                f,
-                "SKIP {rule_id} ({path}): scenario fixtures are not supported yet"
-            ),
+        }
+    }
+}
+
+impl Detections {
+    fn noun(self) -> &'static str {
+        match self {
+            Detections::Signals(_) => "signal",
+            Detections::ScenarioMatches(_) => "scenario match",
+        }
+    }
+
+    fn plural_noun(self) -> &'static str {
+        match self {
+            Detections::Signals(_) => "signals",
+            Detections::ScenarioMatches(_) => "scenario matches",
+        }
+    }
+
+    fn count(self) -> usize {
+        match self {
+            Detections::Signals(count) | Detections::ScenarioMatches(count) => count,
         }
     }
 }
@@ -85,7 +111,7 @@ pub async fn run_fixture(
     };
     let rule = match rules.get(&fixture.rule_id) {
         Some(Rule::Signal(rule)) => rule,
-        Some(Rule::Scenario(_)) => return Ok(report(Verdict::Skipped)),
+        Some(Rule::Scenario(_)) => todo!(),
         None => {
             return Err(FixtureRunError::UnknownRule {
                 rule_id: fixture.rule_id.clone(),
@@ -122,7 +148,7 @@ pub async fn run_fixture(
     } else {
         Verdict::Failed {
             expectation: fixture.expectation,
-            signals,
+            detections: Detections::Signals(signals),
         }
     }))
 }
