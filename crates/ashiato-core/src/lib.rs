@@ -1,3 +1,5 @@
+mod duration;
+pub mod macros;
 pub mod record;
 pub mod rule;
 mod severity;
@@ -5,6 +7,7 @@ mod signal;
 mod tactic;
 mod window;
 
+pub use duration::{Duration, DurationError, DurationUnit};
 pub use severity::Severity;
 pub use signal::SignalRow;
 pub use tactic::Tactic;
