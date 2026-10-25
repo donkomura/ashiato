@@ -1,4 +1,5 @@
 mod duration;
+pub mod fixture;
 pub mod macros;
 pub mod query;
 pub mod record;

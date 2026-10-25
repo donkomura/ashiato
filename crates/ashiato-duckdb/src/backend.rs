@@ -20,9 +20,13 @@ impl DuckDbBackend {
     pub fn open(path: &Path) -> Result<Self, duckdb::Error> {
         let connection = duckdb::Connection::open(path)?;
         connection.execute_batch(crate::SCHEMA_SQL)?;
-        Ok(Self {
+        Ok(Self::from_connection(connection))
+    }
+
+    pub(crate) fn from_connection(connection: duckdb::Connection) -> Self {
+        Self {
             connection: Arc::new(Mutex::new(connection)),
-        })
+        }
     }
 }
 

@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{Duration, Severity, Tactic};
 
-static BUILTIN_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../rules");
+pub(crate) static BUILTIN_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../rules");
 
 const BUILTIN_RULE_SET_ID: &str = "builtin";
 
