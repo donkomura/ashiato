@@ -7,6 +7,7 @@ use ashiato_duckdb::{EventStore, IngestSummary};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 const LOG_DIR: &str = "AWSLogs/111111111111/CloudTrail/us-east-1/2026/10/01";
@@ -373,7 +374,8 @@ fn ingest_accepts_records_of_different_shapes_in_one_file() {
         summary,
         IngestSummary {
             files: 1,
-            events: 4
+            skipped_files: 0,
+            events: 4,
         }
     );
     assert_eq!(count(&db, "events"), 4);
@@ -434,7 +436,8 @@ fn ingest_reads_log_files_recursively_and_skips_digest_and_insight() {
         summary,
         IngestSummary {
             files: 2,
-            events: 3
+            skipped_files: 0,
+            events: 3,
         }
     );
     let mut ids: Vec<String> = db
@@ -456,9 +459,151 @@ fn ingest_of_directory_without_logs_creates_empty_tables() {
         summary,
         IngestSummary {
             files: 0,
-            events: 0
+            skipped_files: 0,
+            events: 0,
         }
     );
     assert_eq!(count(&db, "events"), 0);
     assert_eq!(count(&db, "events_raw"), 0);
+}
+
+fn event_ids(db: &duckdb::Connection, table: &str) -> Vec<String> {
+    db.prepare(&format!("SELECT event_id FROM {table} ORDER BY event_id"))
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
+}
+
+#[test]
+fn ingesting_same_directory_twice_does_not_change_row_counts() {
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    let record = |id: &str| RecordBuilder::new().set("eventID", id).build();
+    write_log(
+        &source,
+        &format!("{LOG_DIR}/log.json.gz"),
+        &[record("evt-1"), record("evt-2")],
+    );
+    let db_path = dir.path().join("ashiato.duckdb");
+
+    let store = EventStore::open(&db_path).unwrap();
+    let first = store.ingest_directory(&source).unwrap();
+    let second = store.ingest_directory(&source).unwrap();
+    drop(store);
+
+    assert_eq!(
+        first,
+        IngestSummary {
+            files: 1,
+            skipped_files: 0,
+            events: 2,
+        }
+    );
+    assert_eq!(
+        second,
+        IngestSummary {
+            files: 0,
+            skipped_files: 1,
+            events: 0,
+        }
+    );
+    let db = duckdb::Connection::open(&db_path).unwrap();
+    assert_eq!(count(&db, "events"), 2);
+    assert_eq!(count(&db, "events_raw"), 2);
+    assert_eq!(count(&db, "ingested_files"), 1);
+}
+
+#[test]
+fn file_with_same_content_under_different_name_is_skipped() {
+    let Ingested { db, summary, .. } = ingest(|source| {
+        let record = RecordBuilder::new().set("eventID", "evt-copied").build();
+        write_log(source, &format!("{LOG_DIR}/a.json.gz"), &[record]);
+        fs::copy(
+            source.join(LOG_DIR).join("a.json.gz"),
+            source.join(LOG_DIR).join("b.json.gz"),
+        )
+        .unwrap();
+    });
+
+    assert_eq!(
+        summary,
+        IngestSummary {
+            files: 1,
+            skipped_files: 1,
+            events: 1,
+        }
+    );
+    assert_eq!(count(&db, "events"), 1);
+    assert_eq!(count(&db, "ingested_files"), 1);
+}
+
+#[test]
+fn same_event_id_in_different_files_is_stored_once() {
+    let Ingested { db, summary, .. } = ingest(|source| {
+        let record = |id: &str| RecordBuilder::new().set("eventID", id).build();
+        write_log(
+            source,
+            "AWSLogs/o-example/111111111111/CloudTrail/us-east-1/2026/10/01/org.json.gz",
+            &[record("evt-shared"), record("evt-org-only")],
+        );
+        write_log(
+            source,
+            &format!("{LOG_DIR}/account.json.gz"),
+            &[record("evt-shared"), record("evt-account-only")],
+        );
+    });
+
+    assert_eq!(
+        summary,
+        IngestSummary {
+            files: 2,
+            skipped_files: 0,
+            events: 3,
+        }
+    );
+    let expected = ["evt-account-only", "evt-org-only", "evt-shared"];
+    assert_eq!(event_ids(&db, "events"), expected);
+    assert_eq!(event_ids(&db, "events_raw"), expected);
+}
+
+#[test]
+fn same_event_id_within_one_file_is_stored_once() {
+    let record = RecordBuilder::new().set("eventID", "evt-repeated").build();
+    let Ingested { db, summary, .. } = ingest_records(&[record.clone(), record]);
+
+    assert_eq!(summary.events, 1);
+    assert_eq!(event_ids(&db, "events"), ["evt-repeated"]);
+    assert_eq!(event_ids(&db, "events_raw"), ["evt-repeated"]);
+}
+
+#[test]
+fn ingested_files_records_hash_uri_size_and_time() {
+    let mut log_path = PathBuf::new();
+    let Ingested { _dir, db, .. } = ingest(|source| {
+        write_log(
+            source,
+            &format!("{LOG_DIR}/log.json.gz"),
+            &[RecordBuilder::new().build()],
+        );
+        log_path = source.join(LOG_DIR).join("log.json.gz");
+    });
+    let bytes = fs::read(&log_path).unwrap();
+    let expected_sha256: String = Sha256::digest(&bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+
+    let (sha256, uri, size, has_ingested_at): (String, String, i64, bool) = db
+        .query_row(
+            "SELECT sha256, uri, size, ingested_at IS NOT NULL FROM ingested_files",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+        )
+        .unwrap();
+    assert_eq!(sha256, expected_sha256);
+    assert_eq!(uri, log_path.to_string_lossy());
+    assert_eq!(size, i64::try_from(bytes.len()).unwrap());
+    assert!(has_ingested_at);
 }

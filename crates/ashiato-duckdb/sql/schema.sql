@@ -32,3 +32,10 @@ CREATE TABLE IF NOT EXISTS events_raw (
     event_id VARCHAR,
     raw JSON
 );
+
+CREATE TABLE IF NOT EXISTS ingested_files (
+    sha256 VARCHAR PRIMARY KEY,
+    uri VARCHAR,
+    size BIGINT,
+    ingested_at TIMESTAMPTZ
+);
