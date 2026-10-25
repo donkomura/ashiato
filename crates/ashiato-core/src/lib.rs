@@ -1,7 +1,9 @@
+pub mod analysis;
 mod duration;
 pub mod fixture;
 pub mod lineage;
 pub mod macros;
+pub mod output;
 pub mod query;
 pub mod record;
 pub mod rule;

@@ -1,0 +1,99 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:01:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "CreateUser",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "python-requests/2.31",
+      "requestParameters": null,
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:02:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "DeleteUser",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "python-requests/2.31",
+      "requestParameters": null,
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:03:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "PutUserPolicy",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "python-requests/2.31",
+      "requestParameters": null,
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:04:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "CreateRole",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "python-requests/2.31",
+      "requestParameters": null,
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:05:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "DeleteRole",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "python-requests/2.31",
+      "requestParameters": null,
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    }
+  ]
+}

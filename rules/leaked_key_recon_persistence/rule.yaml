@@ -1,0 +1,11 @@
+kind: scenario
+id: leaked_key_recon_persistence
+title: 漏洩したアクセスキーによる偵察と永続化
+severity: high
+tactics: [TA0001, TA0007, TA0003]
+window: 24h
+steps:
+  - signal: first_seen_identity_probe
+  - signal: access_denied_enumeration
+    optional: true
+  - signal: iam_persistence

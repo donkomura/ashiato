@@ -1,0 +1,23 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T11:00:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "CreateLoginProfile",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "python-requests/2.31",
+      "requestParameters": {
+        "userName": "alice"
+      }
+    }
+  ]
+}

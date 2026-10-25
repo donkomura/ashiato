@@ -1,0 +1,66 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "eventType": "AwsConsoleSignIn",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": null
+      },
+      "sourceIPAddress": "203.0.113.50",
+      "userAgent": "Mozilla/5.0",
+      "responseElements": {
+        "ConsoleLogin": "Success"
+      },
+      "additionalEventData": {
+        "LoginTo": "https://console.aws.amazon.com/console/home",
+        "MobileVersion": "No",
+        "MFAUsed": "No"
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:20:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "ASIACONSOLEALICE",
+        "sessionContext": {
+          "attributes": {
+            "creationDate": "2026-10-01T10:00:00Z",
+            "mfaAuthenticated": "false"
+          }
+        }
+      },
+      "sourceIPAddress": "203.0.113.50",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "instancesSet": {
+          "items": [
+            {
+              "imageId": "ami-0123456789abcdef0",
+              "minCount": 1,
+              "maxCount": 10
+            }
+          ]
+        }
+      },
+      "responseElements": {
+        "reservationId": "r-0123456789abcdef0"
+      }
+    }
+  ]
+}

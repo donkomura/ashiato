@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use include_dir::{Dir, include_dir};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{Duration, Severity, Tactic};
@@ -30,6 +30,8 @@ pub struct SignalRule {
     pub params: BTreeMap<String, serde_json::Value>,
     #[serde(default)]
     pub attrs: Vec<String>,
+    #[serde(default)]
+    pub external_source_only: bool,
     pub sql: String,
 }
 
@@ -157,7 +159,7 @@ impl RuleSet {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct RuleSetDigest {
     pub id: String,
     pub digest: String,

@@ -1,0 +1,36 @@
+kind: signal
+id: access_denied_enumeration
+title: 1 つのセッションで集中した、参照系 API の拒否
+severity: medium
+tactics: [TA0007]
+params:
+  min_denied: 5
+  min_distinct_apis: 3
+  bin: 10m
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IN (
+      'AccessDenied',
+      'AccessDeniedException',
+      'UnauthorizedOperation',
+      'Client.UnauthorizedOperation'
+    )
+    AND (
+      event_name LIKE 'List%'
+      OR event_name LIKE 'Describe%'
+      OR event_name LIKE 'Get%'
+    )
+  GROUP BY access_key_id, principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_denied') }}
+     AND count(DISTINCT event_name) >= {{ param('min_distinct_apis') }}

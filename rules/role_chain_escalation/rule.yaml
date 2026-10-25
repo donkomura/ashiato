@@ -1,0 +1,12 @@
+kind: scenario
+id: role_chain_escalation
+title: 異なるロールを連鎖して引き受けた後に IAM の権限を変更する
+severity: high
+tactics: [TA0004]
+window: 15m
+steps:
+  - signal: assume_role_by_assumed_role
+    min_count: 2
+    distinct_by: role_arn
+  - signal: iam_privilege_modification
+    max_gap: 5m

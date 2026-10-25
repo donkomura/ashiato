@@ -1,0 +1,41 @@
+kind: signal
+id: compute_resource_launch
+title: GPU 系や大型のインスタンス、または CloudFormation スタックの作成
+severity: high
+tactics: [TA0040]
+params:
+  instance_families: p2,p3,p4d,p4de,p5,p5e,g3,g4dn,g4ad,g5,g5g,g6,g6e,trn1,inf1,inf2,dl1
+  instance_sizes: 16xlarge,24xlarge,32xlarge,48xlarge,metal
+attrs: [instance_type, stack_name]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    {{ json(request_parameters, '$.instanceType') }} AS attr_instance_type,
+    {{ json(request_parameters, '$.stackName') }}    AS attr_stack_name
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND (
+      (event_source = 'cloudformation.amazonaws.com' AND event_name = 'CreateStack')
+      OR (
+        event_source = 'ec2.amazonaws.com'
+        AND event_name = 'RunInstances'
+        AND (
+          strpos(
+            ',' || {{ param('instance_families') }} || ',',
+            ',' || split_part({{ json(request_parameters, '$.instanceType') }}, '.', 1) || ','
+          ) > 0
+          OR strpos(
+            ',' || {{ param('instance_sizes') }} || ',',
+            ',' || split_part({{ json(request_parameters, '$.instanceType') }}, '.', 2) || ','
+          ) > 0
+        )
+      )
+    )
