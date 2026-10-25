@@ -20,26 +20,36 @@ pub enum WindowError {
 
 impl AnalysisWindow {
     pub fn new(
-        _since: DateTime<Utc>,
-        _until: DateTime<Utc>,
-        _lookback: TimeDelta,
+        since: DateTime<Utc>,
+        until: DateTime<Utc>,
+        lookback: TimeDelta,
     ) -> Result<Self, WindowError> {
-        todo!()
+        if since >= until {
+            return Err(WindowError::Empty { since, until });
+        }
+        if lookback < TimeDelta::zero() {
+            return Err(WindowError::NegativeLookback(lookback));
+        }
+        Ok(Self {
+            since,
+            until,
+            baseline_since: since - lookback,
+        })
     }
 
     pub fn since(&self) -> DateTime<Utc> {
-        todo!()
+        self.since
     }
 
     pub fn until(&self) -> DateTime<Utc> {
-        todo!()
+        self.until
     }
 
     pub fn baseline_since(&self) -> DateTime<Utc> {
-        todo!()
+        self.baseline_since
     }
 
     pub fn baseline_until(&self) -> DateTime<Utc> {
-        todo!()
+        self.since
     }
 }
