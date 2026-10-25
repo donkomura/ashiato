@@ -35,15 +35,38 @@ impl Duration {
     }
 
     pub fn to_time_delta(&self) -> TimeDelta {
-        todo!()
+        let amount = i64::from(self.amount);
+        match self.unit {
+            DurationUnit::Seconds => TimeDelta::seconds(amount),
+            DurationUnit::Minutes => TimeDelta::minutes(amount),
+            DurationUnit::Hours => TimeDelta::hours(amount),
+            DurationUnit::Days => TimeDelta::days(amount),
+        }
     }
 }
 
 impl FromStr for Duration {
     type Err = DurationError;
 
-    fn from_str(_text: &str) -> Result<Self, Self::Err> {
-        todo!()
+    fn from_str(text: &str) -> Result<Self, Self::Err> {
+        let invalid = || DurationError::Invalid(text.to_owned());
+        let split = text.len().checked_sub(1).ok_or_else(invalid)?;
+        let (amount, unit) = text.split_at_checked(split).ok_or_else(invalid)?;
+        let unit = match unit {
+            "s" => DurationUnit::Seconds,
+            "m" => DurationUnit::Minutes,
+            "h" => DurationUnit::Hours,
+            "d" => DurationUnit::Days,
+            _ => return Err(invalid()),
+        };
+        if amount.is_empty() || !amount.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(invalid());
+        }
+        let amount: u32 = amount.parse().map_err(|_| invalid())?;
+        if amount == 0 {
+            return Err(invalid());
+        }
+        Ok(Self { amount, unit })
     }
 }
 
@@ -56,7 +79,13 @@ impl TryFrom<String> for Duration {
 }
 
 impl fmt::Display for Duration {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let unit = match self.unit {
+            DurationUnit::Seconds => "s",
+            DurationUnit::Minutes => "m",
+            DurationUnit::Hours => "h",
+            DurationUnit::Days => "d",
+        };
+        write!(f, "{}{unit}", self.amount)
     }
 }
