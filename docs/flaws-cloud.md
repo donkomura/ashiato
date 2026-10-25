@@ -37,21 +37,3 @@ ASHIATO_FLAWS_DIR=~/datasets/flaws/flaws_cloudtrail_logs \
 最大メモリ使用量は、Linux の `/proc/<pid>/status` の `VmHWM` を 20 ミリ秒ごとに読んで求める。Linux 以外では `unknown` になる。
 
 調査期間は、既定で 2017-03-14 から 2020-10-08 までとする。開始日をデータの始まりから 30 日後にしたのは、ベースライン期間（既定 30 日）にイベントがあるようにするためである。調査期間は環境変数 `ASHIATO_FLAWS_SINCE` と `ASHIATO_FLAWS_UNTIL` で変えられる。
-
-## 記録
-
-2026-10-26 に、release ビルドで既定の調査期間に対して実行した結果は次のとおりだった。
-
-- データセットには 1,939,207 件のレコードがあり、`eventID` の重複を除いた 1,225,784 件が `events` に入った。
-- `ingest` は 192.7 秒かかり、最大メモリ使用量は 3,245 MiB だった。
-- `analyze` は 0.7 秒かかり、最大メモリ使用量は 437 MiB だった。
-- 兆候は 12,847 件出た。内訳は次のとおりである。
-  - `first_seen_identity_probe`：12,212 件
-  - `access_denied_enumeration`：599 件
-  - `iam_privilege_modification`：15 件
-  - `iam_persistence`：13 件
-  - `console_login_without_mfa`：6 件
-  - `compute_resource_launch`：2 件
-- シナリオは 1 件も成立しなかった。
-
-この時点の標準ルールは、シナリオ `console_takeover_mining`、`role_chain_escalation`、`leaked_key_recon_persistence` と、それらの兆候だけである。文脈ファイルによる除外とスコアリングはまだない。
