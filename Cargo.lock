@@ -280,11 +280,13 @@ dependencies = [
  "anyhow",
  "ashiato-core",
  "ashiato-duckdb",
+ "chrono",
  "clap",
  "duckdb",
  "flate2",
  "serde_json",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]

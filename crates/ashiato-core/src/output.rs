@@ -6,7 +6,7 @@ use serde::Serialize;
 
 use crate::lineage::{LineageStep, Origin};
 use crate::rule::RuleSetDigest;
-use crate::{Severity, Tactic};
+use crate::{Severity, SignalRow, Tactic};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -89,7 +89,22 @@ impl<W: Write> JsonLinesSink<W> {
 }
 
 impl<W: Write> Sink for JsonLinesSink<W> {
-    fn write(&mut self, _record: &OutputRecord) -> Result<(), SinkError> {
-        todo!()
+    fn write(&mut self, record: &OutputRecord) -> Result<(), SinkError> {
+        serde_json::to_writer(&mut self.writer, record).map_err(std::io::Error::from)?;
+        self.writer.write_all(b"\n")?;
+        Ok(())
+    }
+}
+
+impl From<&SignalRow> for SignalEvidence {
+    fn from(row: &SignalRow) -> Self {
+        Self {
+            start_time: row.start_time,
+            end_time: row.end_time,
+            event_ids: row.event_ids.clone(),
+            access_key_id: row.access_key_id.clone(),
+            source_ip: row.source_ip.clone(),
+            attrs: row.attrs.clone(),
+        }
     }
 }
