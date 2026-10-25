@@ -110,3 +110,49 @@ async fn console_takeover_mining_includes_the_optional_cloudshell_step_when_pres
         expected(0)
     );
 }
+
+#[tokio::test]
+async fn role_chain_escalation_is_attributed_to_the_user_at_the_top_of_the_chain() {
+    let analysis =
+        analyze_builtin_fixture("role_chain_escalation/fixtures/positive/three_role_chain.json")
+            .await;
+
+    let matches: Vec<_> = analysis
+        .matches
+        .iter()
+        .filter(|found| found.scenario_id == "role_chain_escalation")
+        .collect();
+    assert_eq!(matches.len(), 1, "{:#?}", analysis.matches);
+    assert_eq!(
+        matches[0].origin,
+        Origin {
+            id: format!("iam_user:{ALICE_ARN}"),
+            kind: OriginKind::IamUser,
+        }
+    );
+    let hops: Vec<Option<&str>> = matches[0].steps[0]
+        .signals
+        .iter()
+        .map(|signal| signal.attrs.get("role_arn").map(String::as_str))
+        .collect();
+    assert_eq!(
+        hops,
+        [
+            Some("arn:aws:iam::111111111111:role/roleB"),
+            Some("arn:aws:iam::111111111111:role/roleC"),
+        ]
+    );
+    let lineage: Vec<(&str, Option<&str>)> = matches[0]
+        .lineage
+        .iter()
+        .map(|step| (step.access_key_id.as_str(), step.role_arn.as_deref()))
+        .collect();
+    assert_eq!(
+        lineage,
+        [
+            ("ASIAROLEA", Some("arn:aws:iam::111111111111:role/roleA")),
+            ("ASIAROLEB", Some("arn:aws:iam::111111111111:role/roleB")),
+            ("ASIAROLEC", Some("arn:aws:iam::111111111111:role/roleC")),
+        ]
+    );
+}
