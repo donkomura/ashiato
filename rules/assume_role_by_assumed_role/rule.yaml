@@ -1,0 +1,23 @@
+kind: signal
+id: assume_role_by_assumed_role
+title: 引き受けたロールのセッションによる、さらなるロールの引き受け
+severity: low
+tactics: [TA0004]
+attrs: [role_arn]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    {{ json(request_parameters, '$.roleArn') }} AS attr_role_arn
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'sts.amazonaws.com'
+    AND event_name = 'AssumeRole'
+    AND identity_type = 'AssumedRole'
+    AND error_code IS NULL
