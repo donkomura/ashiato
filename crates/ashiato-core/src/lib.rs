@@ -11,6 +11,7 @@ pub mod sequence;
 mod severity;
 mod signal;
 mod tactic;
+pub mod validate;
 mod window;
 
 pub use duration::{Duration, DurationError, DurationUnit};

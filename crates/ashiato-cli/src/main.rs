@@ -1,18 +1,23 @@
+use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use ashiato_core::AnalysisWindow;
+use ashiato_core::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
 use ashiato_core::rule::{RuleFile, RuleSet, Rules};
+use ashiato_core::validate::validate;
+use ashiato_duckdb::fixture::{Verdict, run_fixture};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta, Utc};
 use clap::{Parser, Subcommand};
 
 const DATABASE_FILE: &str = "ashiato.duckdb";
 const RULE_EXTENSION: &str = "yaml";
+const FIXTURE_EXTENSION: &str = "json";
 const BASELINE_LOOKBACK_DAYS: i64 = 30;
 
 #[derive(Parser)]
@@ -31,6 +36,22 @@ enum Command {
         source: String,
     },
     Analyze(AnalyzeArgs),
+    Rules {
+        #[command(subcommand)]
+        command: RulesCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum RulesCommand {
+    Validate(RulesArgs),
+    Test(RulesArgs),
+}
+
+#[derive(clap::Args)]
+struct RulesArgs {
+    #[arg(long)]
+    rules: Option<PathBuf>,
 }
 
 #[derive(clap::Args)]
@@ -51,6 +72,12 @@ fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Ingest { workspace, source } => ingest(&workspace, &source),
         Command::Analyze(args) => analyze(&args),
+        Command::Rules {
+            command: RulesCommand::Validate(args),
+        } => validate_rules(&args),
+        Command::Rules {
+            command: RulesCommand::Test(args),
+        } => test_rules(&args),
     }
 }
 
@@ -82,11 +109,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         args.until,
         TimeDelta::days(BASELINE_LOOKBACK_DAYS),
     )?;
-    let mut sets = vec![RuleSet::builtin()?];
-    if let Some(dir) = &args.rules {
-        sets.push(load_rule_set(dir)?);
-    }
-    let rules = Rules::new(sets)?;
+    let rules = Rules::new(rule_sets(args.rules.as_deref())?)?;
     let backend = DuckDbBackend::open(&database)?;
     let analysis = tokio::runtime::Builder::new_current_thread()
         .build()?
@@ -114,6 +137,61 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn validate_rules(args: &RulesArgs) -> anyhow::Result<()> {
+    let rules = Rules::new(rule_sets(args.rules.as_deref())?)?;
+    let errors = validate(&rules);
+    for error in &errors {
+        eprintln!("error: {error}");
+    }
+    if !errors.is_empty() {
+        bail!("{} problems found in the rules", errors.len());
+    }
+    eprintln!("validated {} rules", rules.iter().count());
+    Ok(())
+}
+
+fn test_rules(args: &RulesArgs) -> anyhow::Result<()> {
+    let sets = rule_sets(args.rules.as_deref())?;
+    let overridden: BTreeSet<String> = sets[1..]
+        .iter()
+        .flat_map(RuleSet::rules)
+        .map(|rule| rule.id().to_owned())
+        .collect();
+    let rules = Rules::new(sets)?;
+    let mut fixtures: Vec<Fixture> = builtin_fixtures()?
+        .into_iter()
+        .filter(|fixture| !overridden.contains(&fixture.rule_id))
+        .collect();
+    if let Some(dir) = &args.rules {
+        for (path, content) in read_files(dir, FIXTURE_EXTENSION)? {
+            fixtures.push(Fixture::parse(&FixtureFile { path, content })?);
+        }
+    }
+
+    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
+    let mut failures = 0;
+    for fixture in &fixtures {
+        let report = runtime.block_on(run_fixture(&rules, fixture))?;
+        if matches!(report.verdict, Verdict::Failed { .. }) {
+            failures += 1;
+        }
+        println!("{report}");
+    }
+    if failures > 0 {
+        bail!("{failures} of {} fixtures failed", fixtures.len());
+    }
+    eprintln!("{} fixtures passed", fixtures.len());
+    Ok(())
+}
+
+fn rule_sets(dir: Option<&Path>) -> anyhow::Result<Vec<RuleSet>> {
+    let mut sets = vec![RuleSet::builtin()?];
+    if let Some(dir) = dir {
+        sets.push(load_rule_set(dir)?);
+    }
+    Ok(sets)
+}
+
 fn parse_time(text: &str) -> Result<DateTime<Utc>, String> {
     if let Ok(date) = NaiveDate::parse_from_str(text, "%Y-%m-%d") {
         return Ok(date.and_time(NaiveTime::MIN).and_utc());
@@ -138,26 +216,37 @@ fn report_warning(warning: &LineageWarning) {
 }
 
 fn load_rule_set(dir: &Path) -> anyhow::Result<RuleSet> {
-    let mut files = Vec::new();
-    collect_rule_files(dir, dir, &mut files)?;
+    let files = read_files(dir, RULE_EXTENSION)?
+        .into_iter()
+        .map(|(path, content)| RuleFile { path, content })
+        .collect();
     Ok(RuleSet::parse(dir.to_string_lossy(), files)?)
 }
 
-fn collect_rule_files(root: &Path, dir: &Path, files: &mut Vec<RuleFile>) -> anyhow::Result<()> {
+fn read_files(root: &Path, extension: &str) -> anyhow::Result<Vec<(String, String)>> {
+    let mut files = Vec::new();
+    collect_files(root, root, extension, &mut files)?;
+    files.sort();
+    Ok(files)
+}
+
+fn collect_files(
+    root: &Path,
+    dir: &Path,
+    extension: &str,
+    files: &mut Vec<(String, String)>,
+) -> anyhow::Result<()> {
     let entries =
         fs::read_dir(dir).with_context(|| format!("failed to read rules {}", dir.display()))?;
     for entry in entries {
         let path = entry?.path();
         if path.is_dir() {
-            collect_rule_files(root, &path, files)?;
-        } else if path.extension().is_some_and(|ext| ext == RULE_EXTENSION) {
+            collect_files(root, &path, extension, files)?;
+        } else if path.extension().is_some_and(|ext| ext == extension) {
             let content = fs::read_to_string(&path)
-                .with_context(|| format!("failed to read rule {}", path.display()))?;
+                .with_context(|| format!("failed to read {}", path.display()))?;
             let relative = path.strip_prefix(root).unwrap_or(&path);
-            files.push(RuleFile {
-                path: relative.to_string_lossy().into_owned(),
-                content,
-            });
+            files.push((relative.to_string_lossy().into_owned(), content));
         }
     }
     Ok(())

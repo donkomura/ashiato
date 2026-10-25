@@ -323,3 +323,202 @@ fn analyze_rejects_a_period_that_is_not_after_since() {
 
     assert!(!output.status.success());
 }
+
+fn write_rule(rules: &Path, id: &str, content: &str) {
+    let dir = rules.join(id);
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(dir.join("rule.yaml"), content).unwrap();
+}
+
+fn write_fixture(rules: &Path, path: &str, records: serde_json::Value) {
+    let path = rules.join(path);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(path, json!({ "Records": records }).to_string()).unwrap();
+}
+
+fn console_login_record() -> serde_json::Value {
+    json!({ "eventSource": "signin.amazonaws.com", "eventName": "ConsoleLogin" })
+}
+
+fn rules_command(subcommand: &str, rules: Option<&Path>) -> std::process::Output {
+    let mut command = ashiato();
+    command.args(["rules", subcommand]);
+    if let Some(rules) = rules {
+        command.arg("--rules").arg(rules);
+    }
+    command.output().unwrap()
+}
+
+#[test]
+fn rules_validate_accepts_the_builtin_rules() {
+    let output = rules_command("validate", None);
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn rules_validate_accepts_valid_rules_under_rules() {
+    let dir = TempDir::new().unwrap();
+    write_rule(dir.path(), "test_console_login", CONSOLE_LOGIN_RULE);
+
+    let output = rules_command("validate", Some(dir.path()));
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn rules_validate_rejects_a_function_outside_the_allow_list() {
+    let dir = TempDir::new().unwrap();
+    write_rule(
+        dir.path(),
+        "test_console_login",
+        &CONSOLE_LOGIN_RULE.replace(
+            "event_name = 'ConsoleLogin'",
+            "regexp_matches(event_name, '^Console')",
+        ),
+    );
+
+    let output = rules_command("validate", Some(dir.path()));
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("test_console_login"), "stderr: {stderr}");
+    assert!(stderr.contains("regexp_matches"), "stderr: {stderr}");
+}
+
+#[test]
+fn rules_validate_rejects_a_scenario_that_refers_to_an_unknown_signal() {
+    let dir = TempDir::new().unwrap();
+    write_rule(
+        dir.path(),
+        "test_repeated_console_login",
+        REPEATED_CONSOLE_LOGIN_RULE,
+    );
+
+    let output = rules_command("validate", Some(dir.path()));
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("test_console_login"), "stderr: {stderr}");
+}
+
+#[test]
+fn rules_test_passes_the_builtin_fixtures() {
+    let output = rules_command("test", None);
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains(
+            "PASS console_takeover_mining (console_takeover_mining/fixtures/positive/mining_from_cloudshell.json)"
+        ),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn rules_test_runs_the_fixtures_under_rules() {
+    let dir = TempDir::new().unwrap();
+    write_rule(dir.path(), "test_console_login", CONSOLE_LOGIN_RULE);
+    write_fixture(
+        dir.path(),
+        "test_console_login/fixtures/positive/login.json",
+        json!([console_login_record()]),
+    );
+
+    let output = rules_command("test", Some(dir.path()));
+
+    assert!(
+        output.status.success(),
+        "stdout: {}\nstderr: {}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout
+            .contains("PASS test_console_login (test_console_login/fixtures/positive/login.json)"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        stdout.contains("PASS console_takeover_mining"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn rules_test_fails_when_a_fixture_fails() {
+    let dir = TempDir::new().unwrap();
+    write_rule(dir.path(), "test_console_login", CONSOLE_LOGIN_RULE);
+    write_fixture(
+        dir.path(),
+        "test_console_login/fixtures/negative/login.json",
+        json!([console_login_record()]),
+    );
+
+    let output = rules_command("test", Some(dir.path()));
+
+    assert!(!output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout
+            .contains("FAIL test_console_login (test_console_login/fixtures/negative/login.json)"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn rules_test_skips_the_builtin_fixtures_of_overridden_rules() {
+    let dir = TempDir::new().unwrap();
+    write_rule(
+        dir.path(),
+        "cloudshell_activity",
+        &CONSOLE_LOGIN_RULE.replace("test_console_login", "cloudshell_activity"),
+    );
+
+    let output = rules_command("test", Some(dir.path()));
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success(),
+        "stdout: {stdout}\nstderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !stdout.contains("cloudshell_activity/fixtures"),
+        "stdout: {stdout}"
+    );
+}
+
+#[test]
+fn rules_test_rejects_a_fixture_outside_the_fixture_layout() {
+    let dir = TempDir::new().unwrap();
+    write_rule(dir.path(), "test_console_login", CONSOLE_LOGIN_RULE);
+    write_fixture(
+        dir.path(),
+        "test_console_login/login.json",
+        json!([console_login_record()]),
+    );
+
+    let output = rules_command("test", Some(dir.path()));
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("test_console_login/login.json"),
+        "stderr: {stderr}"
+    );
+}
