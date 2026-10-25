@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::lineage::LineageEdge;
 use crate::macros::{Dialect, MacroContext, MacroError, expand};
 use crate::rule::SignalRule;
 use crate::{AnalysisWindow, SignalRow};
@@ -8,6 +9,10 @@ use crate::{AnalysisWindow, SignalRow};
 pub trait QueryBackend: Send + Sync {
     fn dialect(&self) -> Dialect;
     async fn query_signals(&self, sql: &str) -> Result<Vec<SignalRow>, BackendError>;
+    async fn query_lineage(
+        &self,
+        window: &AnalysisWindow,
+    ) -> Result<Vec<LineageEdge>, BackendError>;
 }
 
 #[derive(Debug, thiserror::Error)]

@@ -2,9 +2,10 @@ use std::collections::BTreeMap;
 use std::path::Path;
 use std::sync::{Arc, Mutex, PoisonError};
 
-use ashiato_core::SignalRow;
+use ashiato_core::lineage::LineageEdge;
 use ashiato_core::macros::Dialect;
 use ashiato_core::query::{BackendError, QueryBackend};
+use ashiato_core::{AnalysisWindow, SignalRow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use duckdb::arrow::datatypes::DataType;
@@ -45,6 +46,14 @@ impl QueryBackend for DuckDbBackend {
         })
         .await
         .map_err(|error| BackendError::Query(Box::new(error)))?
+    }
+
+    async fn query_lineage(
+        &self,
+        window: &AnalysisWindow,
+    ) -> Result<Vec<LineageEdge>, BackendError> {
+        let _ = window;
+        todo!()
     }
 }
 
