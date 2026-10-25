@@ -3,10 +3,7 @@ WITH records AS (
     SELECT
         json_extract_string(record, '$.eventID') AS event_id,
         record
-    FROM (
-        SELECT unnest(Records) AS record
-        FROM read_json(?, columns = {'Records': 'JSON[]'}, compression = 'gzip')
-    )
+    FROM loaded_records
 )
 SELECT record
 FROM records

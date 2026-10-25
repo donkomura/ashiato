@@ -11,6 +11,11 @@ pub use backend::DuckDbBackend;
 const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
 const STAGE_RECORDS_SQL: &str = include_str!("../sql/stage_records.sql");
 const NORMALIZE_EVENTS_SQL: &str = include_str!("../sql/normalize_events.sql");
+const LOAD_FILE_SQL: &str = "CREATE OR REPLACE TEMP TABLE loaded_records AS \
+     SELECT unnest(Records) AS record \
+     FROM read_json(?, columns = {'Records': 'JSON[]'}, compression = 'gzip')";
+const LOAD_RECORDS_SQL: &str = "CREATE OR REPLACE TEMP TABLE loaded_records AS \
+     SELECT unnest(CAST(CAST(? AS JSON) AS JSON[])) AS record";
 
 const EXCLUDED_DIRECTORIES: [&str; 2] = ["CloudTrail-Digest", "CloudTrail-Insight"];
 
@@ -42,6 +47,28 @@ impl EventStore {
         let connection = duckdb::Connection::open(path)?;
         connection.execute_batch(SCHEMA_SQL)?;
         Ok(Self { connection })
+    }
+
+    pub(crate) fn open_in_memory() -> Result<Self, IngestError> {
+        let connection = duckdb::Connection::open_in_memory()?;
+        connection.execute_batch(SCHEMA_SQL)?;
+        Ok(Self { connection })
+    }
+
+    pub(crate) fn into_backend(self) -> DuckDbBackend {
+        DuckDbBackend::from_connection(self.connection)
+    }
+
+    pub(crate) fn ingest_records(
+        &self,
+        records: &[serde_json::Value],
+    ) -> Result<usize, IngestError> {
+        let records = serde_json::Value::from(records).to_string();
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(LOAD_RECORDS_SQL, [&records])?;
+        let events = insert_loaded_records(&transaction)?;
+        transaction.commit()?;
+        Ok(events)
     }
 
     pub fn ingest_directory(&self, dir: &Path) -> Result<IngestSummary, IngestError> {
@@ -82,14 +109,8 @@ impl EventStore {
 
         let uri = file.to_string_lossy();
         let transaction = self.connection.unchecked_transaction()?;
-        transaction.execute(STAGE_RECORDS_SQL, [&uri])?;
-        let events = transaction.execute(
-            "INSERT INTO events_raw \
-             SELECT json_extract_string(record, '$.eventID'), record FROM staged_records",
-            [],
-        )?;
-        transaction.execute(NORMALIZE_EVENTS_SQL, [])?;
-        transaction.execute("DROP TABLE staged_records", [])?;
+        transaction.execute(LOAD_FILE_SQL, [&uri])?;
+        let events = insert_loaded_records(&transaction)?;
         transaction.execute(
             "INSERT INTO ingested_files VALUES (?, ?, ?, current_timestamp)",
             duckdb::params![sha256, uri, content.len()],
@@ -97,6 +118,18 @@ impl EventStore {
         transaction.commit()?;
         Ok(Some(events))
     }
+}
+
+fn insert_loaded_records(transaction: &duckdb::Transaction<'_>) -> Result<usize, IngestError> {
+    transaction.execute(STAGE_RECORDS_SQL, [])?;
+    let events = transaction.execute(
+        "INSERT INTO events_raw \
+         SELECT json_extract_string(record, '$.eventID'), record FROM staged_records",
+        [],
+    )?;
+    transaction.execute(NORMALIZE_EVENTS_SQL, [])?;
+    transaction.execute_batch("DROP TABLE staged_records; DROP TABLE loaded_records;")?;
+    Ok(events)
 }
 
 fn log_files(dir: &Path) -> Result<Vec<PathBuf>, IngestError> {
