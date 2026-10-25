@@ -1,0 +1,11 @@
+kind: scenario
+id: console_takeover_mining
+title: MFA を使わないコンソールへのログインからマイニング用の計算資源を起動する
+severity: critical
+tactics: [TA0001, TA0002, TA0040]
+window: 1h
+steps:
+  - signal: console_login_without_mfa
+  - signal: cloudshell_activity
+    optional: true
+  - signal: compute_resource_launch

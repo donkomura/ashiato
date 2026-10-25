@@ -1,0 +1,21 @@
+kind: signal
+id: console_login_without_mfa
+title: MFA を使わないコンソールへのログイン
+severity: medium
+tactics: [TA0001]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'signin.amazonaws.com'
+    AND event_name = 'ConsoleLogin'
+    AND {{ json(response_elements, '$.ConsoleLogin') }} = 'Success'
+    AND {{ json(additional_event_data, '$.MFAUsed') }} = 'No'
