@@ -3,6 +3,10 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
+mod backend;
+
+pub use backend::DuckDbBackend;
+
 const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
 const STAGE_RECORDS_SQL: &str = include_str!("../sql/stage_records.sql");
 const NORMALIZE_EVENTS_SQL: &str = include_str!("../sql/normalize_events.sql");
