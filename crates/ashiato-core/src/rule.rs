@@ -4,7 +4,7 @@ use include_dir::{Dir, include_dir};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::{Severity, Tactic};
+use crate::{Duration, Severity, Tactic};
 
 static BUILTIN_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../rules");
 
@@ -46,7 +46,7 @@ pub struct ScenarioRule {
     pub title: String,
     pub severity: Severity,
     pub tactics: Vec<Tactic>,
-    pub window: String,
+    pub window: Duration,
     pub steps: Vec<ScenarioStep>,
 }
 
@@ -61,7 +61,7 @@ pub struct ScenarioStep {
     #[serde(default)]
     pub distinct_by: Option<String>,
     #[serde(default)]
-    pub max_gap: Option<String>,
+    pub max_gap: Option<Duration>,
     #[serde(default)]
     pub same: Vec<String>,
 }

@@ -1,7 +1,7 @@
 use ashiato_core::rule::{
     DataRequirement, Rule, RuleError, RuleFile, RuleSet, Rules, ScenarioStep,
 };
-use ashiato_core::{Severity, Tactic};
+use ashiato_core::{Duration, Severity, Tactic};
 use serde_json::json;
 
 const S3_DELETE_BURST: &str = r#"
@@ -150,7 +150,7 @@ fn scenario_rule_is_parsed() {
             Tactic::Impact
         ]
     );
-    assert_eq!(rule.window, "1h");
+    assert_eq!(rule.window, "1h".parse::<Duration>().unwrap());
     assert_eq!(
         rule.steps,
         [
@@ -183,7 +183,7 @@ fn scenario_rule_is_parsed() {
                 optional: false,
                 min_count: 2,
                 distinct_by: Some("bucket".to_owned()),
-                max_gap: Some("30m".to_owned()),
+                max_gap: Some("30m".parse().unwrap()),
                 same: vec!["bucket".to_owned()],
             },
         ]
@@ -455,4 +455,14 @@ fn builtin_rules_are_loaded_and_valid() {
 
     assert_eq!(builtin.id(), "builtin");
     Rules::new([builtin]).unwrap();
+}
+
+#[test]
+fn invalid_duration_in_scenario_is_rejected() {
+    let invalid_window = CROSS_ACCOUNT_S3_DESTRUCTION.replace("window: 1h", "window: 1hour");
+    let invalid_max_gap = CROSS_ACCOUNT_S3_DESTRUCTION.replace("max_gap: 30m", "max_gap: 0m");
+
+    for content in [invalid_window, invalid_max_gap] {
+        assert!(matches!(parse_one(&content), Err(RuleError::Parse { .. })));
+    }
 }
