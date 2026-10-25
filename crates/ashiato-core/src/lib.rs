@@ -1,5 +1,6 @@
 mod duration;
 pub mod macros;
+pub mod query;
 pub mod record;
 pub mod rule;
 mod severity;
