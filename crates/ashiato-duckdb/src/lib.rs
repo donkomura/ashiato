@@ -1,7 +1,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use sha2::{Digest, Sha256};
+
 const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
+const STAGE_RECORDS_SQL: &str = include_str!("../sql/stage_records.sql");
 const NORMALIZE_EVENTS_SQL: &str = include_str!("../sql/normalize_events.sql");
 
 const EXCLUDED_DIRECTORIES: [&str; 2] = ["CloudTrail-Digest", "CloudTrail-Insight"];
@@ -37,33 +40,57 @@ impl EventStore {
     }
 
     pub fn ingest_directory(&self, dir: &Path) -> Result<IngestSummary, IngestError> {
-        let files = log_files(dir)?;
-        let mut events = 0;
-        for file in &files {
-            events += self.ingest_file(file)?;
-        }
-        Ok(IngestSummary {
-            files: files.len(),
+        let mut summary = IngestSummary {
+            files: 0,
             skipped_files: 0,
-            events,
-        })
+            events: 0,
+        };
+        for file in log_files(dir)? {
+            match self.ingest_file(&file)? {
+                Some(events) => {
+                    summary.files += 1;
+                    summary.events += events;
+                }
+                None => summary.skipped_files += 1,
+            }
+        }
+        Ok(summary)
     }
 
-    fn ingest_file(&self, file: &Path) -> Result<usize, IngestError> {
-        self.connection.execute(
-            "CREATE OR REPLACE TEMP TABLE staged_records AS \
-             SELECT unnest(Records) AS record \
-             FROM read_json(?, columns = {'Records': 'JSON[]'}, compression = 'gzip')",
-            [file.to_string_lossy()],
+    fn ingest_file(&self, file: &Path) -> Result<Option<usize>, IngestError> {
+        let content = fs::read(file).map_err(|source| IngestError::Io {
+            path: file.to_path_buf(),
+            source,
+        })?;
+        let sha256: String = Sha256::digest(&content)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let already_ingested: bool = self.connection.query_row(
+            "SELECT count(*) > 0 FROM ingested_files WHERE sha256 = ?",
+            [&sha256],
+            |row| row.get(0),
         )?;
-        let events = self.connection.execute(
+        if already_ingested {
+            return Ok(None);
+        }
+
+        let uri = file.to_string_lossy();
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(STAGE_RECORDS_SQL, [&uri])?;
+        let events = transaction.execute(
             "INSERT INTO events_raw \
              SELECT json_extract_string(record, '$.eventID'), record FROM staged_records",
             [],
         )?;
-        self.connection.execute(NORMALIZE_EVENTS_SQL, [])?;
-        self.connection.execute("DROP TABLE staged_records", [])?;
-        Ok(events)
+        transaction.execute(NORMALIZE_EVENTS_SQL, [])?;
+        transaction.execute("DROP TABLE staged_records", [])?;
+        transaction.execute(
+            "INSERT INTO ingested_files VALUES (?, ?, ?, current_timestamp)",
+            duckdb::params![sha256, uri, content.len()],
+        )?;
+        transaction.commit()?;
+        Ok(Some(events))
     }
 }
 
