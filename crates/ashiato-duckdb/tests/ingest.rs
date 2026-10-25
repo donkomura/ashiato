@@ -395,6 +395,24 @@ fn ingest_accepts_records_of_different_shapes_in_one_file() {
 }
 
 #[test]
+fn ingest_reads_log_files_larger_than_16_mib() {
+    let padding = "x".repeat(1024 * 1024);
+    let records: Vec<Value> = (0..20)
+        .map(|index| {
+            RecordBuilder::new()
+                .set("eventID", format!("evt-large-{index}"))
+                .set("requestParameters", json!({ "padding": padding }))
+                .build()
+        })
+        .collect();
+
+    let Ingested { summary, db, .. } = ingest_records(&records);
+
+    assert_eq!(summary.events, 20);
+    assert_eq!(count(&db, "events"), 20);
+}
+
+#[test]
 fn events_raw_keeps_original_record() {
     let record = assumed_role_record("evt-raw");
     let Ingested { db, .. } = ingest_records(std::slice::from_ref(&record));
