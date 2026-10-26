@@ -1,0 +1,29 @@
+kind: signal
+id: cloud_firewall_opened
+title: セキュリティグループの受信規則による、インターネット全体への開放
+severity: medium
+tactics: [TA0112]
+attrs: [group_id]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    coalesce(
+      {{ json(request_parameters, '$.groupId') }},
+      {{ json(request_parameters, '$.groupName') }}
+    )                    AS attr_group_id
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'ec2.amazonaws.com'
+    AND event_name = 'AuthorizeSecurityGroupIngress'
+    AND error_code IS NULL
+    AND (
+      strpos(request_parameters, '"0.0.0.0/0"') > 0
+      OR strpos(request_parameters, '"::/0"') > 0
+    )

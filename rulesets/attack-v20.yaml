@@ -17,6 +17,10 @@ rules:
     refs: [T1580, T1526]
   - id: bucket_name_enumeration
     refs: [T1580]
+  - id: cloud_firewall_opened
+    refs: [T1686.001]
+  - id: cloud_log_scope_reduced
+    refs: [T1685.002]
   - id: cloudshell_activity
     refs: [T1059.009]
   - id: cloudtrail_logging_disabled
@@ -47,6 +51,8 @@ rules:
     refs: [T1136.003, T1098.001]
   - id: iam_privilege_modification
     refs: [T1098.003, T1556.009]
+  - id: identity_provider_trust_modified
+    refs: [T1484.002, T1556.007]
   - id: image_registered
     refs: [T1525]
   - id: kms_key_deletion
@@ -61,10 +67,14 @@ rules:
     refs: [T1078.004]
   - id: offensive_tool_user_agent
     refs: [T1059.009]
+  - id: organization_left
+    refs: [T1666]
   - id: password_policy_change
     refs: [T1556]
   - id: persistence_attempt_denied
     refs: [T1136.003, T1098.001, T1648]
+  - id: quota_raise_then_mining
+    refs: [T1578.005, T1496.001]
   - id: recovery_inhibited
     refs: [T1490]
   - id: resource_destruction_burst
@@ -85,12 +95,16 @@ rules:
     refs: [T1486]
   - id: secrets_bulk_retrieval
     refs: [T1555.006]
+  - id: security_alerting_disabled
+    refs: [T1685]
   - id: security_monitoring_disabled
     refs: [T1685]
   - id: self_privilege_escalation
     refs: [T1098.003]
   - id: serverless_function_change
     refs: [T1648, T1546]
+  - id: service_quota_increase
+    refs: [T1578.005]
   - id: snapshot_restore_rollback
     refs: [T1578.001, T1578.004]
   - id: snapshot_shared_externally
