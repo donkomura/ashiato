@@ -1,17 +1,26 @@
 use std::collections::BTreeMap;
 
-use crate::AnalysisWindow;
 use crate::lineage::{LineageGraph, LineageStep, LineageWarning, Origin};
 use crate::output::{ScenarioMatchRecord, SignalEvidence, SignalRecord, StepRecord};
 use crate::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
 use crate::rule::{Rule, Rules, ScenarioRule, SignalRule};
 use crate::sequence::{ObservedSignal, ScenarioMatch, match_scenario};
+use crate::{AnalysisWindow, Severity};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Analysis {
     pub signals: Vec<SignalRecord>,
     pub matches: Vec<ScenarioMatchRecord>,
     pub warnings: Vec<LineageWarning>,
+}
+
+impl Analysis {
+    pub fn retain_severities(&mut self, severities: &[Severity]) {
+        self.signals
+            .retain(|signal| severities.contains(&signal.severity));
+        self.matches
+            .retain(|found| severities.contains(&found.severity));
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

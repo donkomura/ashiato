@@ -15,7 +15,7 @@ pub mod validate;
 mod window;
 
 pub use duration::{Duration, DurationError, DurationUnit};
-pub use severity::Severity;
+pub use severity::{Severity, UnknownSeverity};
 pub use signal::SignalRow;
 pub use tactic::Tactic;
 pub use window::{AnalysisWindow, WindowError};
