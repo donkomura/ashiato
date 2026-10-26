@@ -15,7 +15,9 @@ pub enum Tactic {
     #[serde(rename = "TA0004")]
     PrivilegeEscalation,
     #[serde(rename = "TA0005")]
-    DefenseEvasion,
+    Stealth,
+    #[serde(rename = "TA0112")]
+    DefenseImpairment,
     #[serde(rename = "TA0006")]
     CredentialAccess,
     #[serde(rename = "TA0007")]

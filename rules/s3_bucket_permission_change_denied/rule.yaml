@@ -2,7 +2,7 @@ kind: signal
 id: s3_bucket_permission_change_denied
 title: 権限不足で拒否された、S3 バケットのポリシー、ACL、Web サイト設定の変更や削除
 severity: medium
-tactics: [TA0040]
+tactics: [TA0010, TA0040]
 params:
   bin: 1h
 attrs: [caller_ip, event_names]

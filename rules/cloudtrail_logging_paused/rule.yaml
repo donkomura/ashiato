@@ -2,7 +2,7 @@ kind: signal
 id: cloudtrail_logging_paused
 title: CloudTrail の証跡の一時停止と再開
 severity: high
-tactics: [TA0005]
+tactics: [TA0112]
 attrs: [trail, restarted_at]
 sql: |
   WITH stops AS (

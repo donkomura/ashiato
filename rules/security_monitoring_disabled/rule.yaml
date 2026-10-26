@@ -2,7 +2,7 @@ kind: signal
 id: security_monitoring_disabled
 title: GuardDuty、Config、フローログなどの監視の無効化
 severity: high
-tactics: [TA0005]
+tactics: [TA0112]
 attrs: [action]
 sql: |
   SELECT
