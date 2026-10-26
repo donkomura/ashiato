@@ -1,0 +1,26 @@
+kind: signal
+id: cross_account_assume_role
+title: 別のアカウントの主体によるロールの引き受け
+severity: medium
+tactics: [TA0001]
+attrs: [role_arn]
+# The caller's long-term key has no lineage edge, so its origin would be the caller itself.
+# Reporting the issued session key instead resolves this signal to the same external
+# principal as the actions taken with that session, which the scenarios need.
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    {{ json(response_elements, '$.credentials.accessKeyId') }} AS access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    {{ json(request_parameters, '$.roleArn') }} AS attr_role_arn
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND event_source = 'sts.amazonaws.com'
+    AND event_name = 'AssumeRole'
+    AND split_part({{ json(request_parameters, '$.roleArn') }}, ':', 5) <> principal_account_id

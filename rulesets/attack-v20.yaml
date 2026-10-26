@@ -21,6 +21,8 @@ rules:
     refs: [T1686.001]
   - id: cloud_log_scope_reduced
     refs: [T1685.002]
+  - id: cloud_service_hijack_probe
+    refs: [T1496.004]
   - id: cloudshell_activity
     refs: [T1059.009]
   - id: cloudtrail_logging_disabled
@@ -39,6 +41,10 @@ rules:
     refs: [T1078.004]
   - id: console_takeover_mining
     refs: [T1078.004, T1059.009, T1496.001]
+  - id: cross_account_assume_role
+    refs: [T1199]
+  - id: cross_account_s3_destruction
+    refs: [T1199, T1530, T1485]
   - id: ec2_instance_connect_key_push
     refs: [T1098.004, T1021.008]
   - id: federation_token_issued
@@ -85,12 +91,20 @@ rules:
     refs: [T1078.004]
   - id: root_credential_usage
     refs: [T1078.004]
+  - id: s3_bucket_enumeration
+    refs: [T1580]
   - id: s3_bucket_permission_change_denied
     refs: [T1537, T1491.002]
   - id: s3_bucket_public_access_granted
     refs: [T1537]
+  - id: s3_delete_burst
+    refs: [T1485]
   - id: s3_lifecycle_expiration_set
     refs: [T1485.001]
+  - id: s3_object_read_or_copy
+    refs: [T1530]
+  - id: s3_ransom_encryption
+    refs: [T1486, T1485.001]
   - id: s3_ssec_encryption
     refs: [T1486]
   - id: secrets_bulk_retrieval
@@ -117,3 +131,5 @@ rules:
     refs: [T1550.001]
   - id: traffic_mirroring_created
     refs: [T1040, T1020.001]
+  - id: trusted_relationship_abuse
+    refs: [T1199]

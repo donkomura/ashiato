@@ -5,10 +5,13 @@ use chrono::{DateTime, Utc};
 
 use crate::lineage::{LineageGraph, LineageStep, LineageWarning, Origin};
 use crate::output::{
-    RecordKind, ScenarioMatchRecord, SignalEvidence, SignalRecord, StepRecord, SummaryRecord,
+    RecordKind, RuleSkippedRecord, ScenarioMatchRecord, SignalEvidence, SignalRecord, SkipReason,
+    StepRecord, SummaryRecord,
 };
-use crate::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
-use crate::rule::{Rule, Rules, ScenarioRule, SignalRule};
+use crate::query::{
+    BackendError, DataAvailability, QueryBackend, SignalQueryError, query_signal_rule,
+};
+use crate::rule::{DataRequirement, Rule, Rules, ScenarioRule, SignalRule};
 use crate::ruleset::RuleRefs;
 use crate::sequence::{ObservedSignal, ScenarioMatch, match_scenario};
 use crate::{AnalysisWindow, Severity};
@@ -18,6 +21,8 @@ pub struct Analysis {
     pub signals: Vec<SignalRecord>,
     pub matches: Vec<ScenarioMatchRecord>,
     pub warnings: Vec<LineageWarning>,
+    pub data: DataAvailability,
+    pub skipped: Vec<RuleSkippedRecord>,
 }
 
 impl Analysis {
@@ -126,6 +131,8 @@ pub enum AnalysisError {
     Signal(#[from] SignalQueryError),
     #[error("failed to query the session lineage")]
     Lineage(#[source] BackendError),
+    #[error("failed to query which kinds of data the workspace has")]
+    DataAvailability(#[source] BackendError),
 }
 
 struct OriginSignals {
@@ -138,8 +145,15 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
     rules: &Rules,
     window: &AnalysisWindow,
 ) -> Result<Analysis, AnalysisError> {
+    let data = backend
+        .data_availability(window)
+        .await
+        .map_err(AnalysisError::DataAvailability)?;
+    let skipped = skipped_rules(rules, &data);
+    let runnable = |id: &str| skipped.iter().all(|record| record.rule_id != id);
+
     let mut observed = Vec::new();
-    for rule in signal_rules(rules) {
+    for rule in signal_rules(rules).filter(|rule| runnable(&rule.id)) {
         for row in query_signal_rule(backend, rule, window).await? {
             observed.push(ObservedSignal {
                 signal_id: rule.id.clone(),
@@ -180,9 +194,11 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
         signals: Vec::new(),
         matches: Vec::new(),
         warnings,
+        data,
+        skipped: Vec::new(),
     };
     for OriginSignals { origin, signals } in origins.into_values() {
-        for scenario in scenario_rules(rules) {
+        for scenario in scenario_rules(rules).filter(|scenario| runnable(&scenario.id)) {
             for found in match_scenario(scenario, &signals) {
                 analysis
                     .matches
@@ -193,7 +209,41 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
             analysis.signals.push(signal_record(rules, &origin, signal));
         }
     }
+    analysis.skipped = skipped;
     Ok(analysis)
+}
+
+pub fn skipped_rules(rules: &Rules, data: &DataAvailability) -> Vec<RuleSkippedRecord> {
+    rules
+        .iter()
+        .filter_map(|rule| {
+            let missing = match rule {
+                Rule::Signal(rule) => missing_data(rule, data),
+                Rule::Scenario(scenario) => scenario
+                    .steps
+                    .iter()
+                    .filter_map(|step| match rules.get(&step.signal) {
+                        Some(Rule::Signal(signal)) => Some(missing_data(signal, data)),
+                        _ => None,
+                    })
+                    .flatten()
+                    .collect(),
+            };
+            (!missing.is_empty()).then(|| RuleSkippedRecord {
+                rule_id: rule.id().to_owned(),
+                reason: SkipReason::MissingData,
+                requires: missing.into_iter().collect(),
+            })
+        })
+        .collect()
+}
+
+fn missing_data(rule: &SignalRule, data: &DataAvailability) -> BTreeSet<DataRequirement> {
+    rule.requires
+        .iter()
+        .copied()
+        .filter(|requirement| !data.satisfies(*requirement))
+        .collect()
 }
 
 fn signal_rules(rules: &Rules) -> impl Iterator<Item = &SignalRule> {

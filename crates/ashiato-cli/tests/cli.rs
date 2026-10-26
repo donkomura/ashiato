@@ -314,6 +314,88 @@ fn analyze_writes_the_run_record_first() {
 }
 
 #[test]
+fn analyze_writes_the_data_availability_in_the_run_record() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&[]);
+
+    assert_eq!(
+        lines[0]["data"],
+        json!({ "events": 2, "s3_data_events": false }),
+        "{lines:#?}"
+    );
+}
+
+fn skipped_rule_ids(lines: &[serde_json::Value]) -> Vec<&str> {
+    let mut ids: Vec<&str> = of_type(lines, "rule_skipped")
+        .iter()
+        .map(|line| line["rule_id"].as_str().unwrap())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn analyze_writes_the_rules_skipped_for_missing_s3_data_events() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&[]);
+
+    assert_eq!(
+        skipped_rule_ids(&lines),
+        [
+            "cross_account_s3_destruction",
+            "s3_delete_burst",
+            "s3_object_read_or_copy",
+        ],
+        "{lines:#?}"
+    );
+    for skipped in of_type(&lines, "rule_skipped") {
+        assert_eq!(skipped["reason"], "missing_data", "{skipped}");
+        assert_eq!(skipped["requires"], json!(["s3_data_events"]), "{skipped}");
+    }
+    let first_other = lines
+        .iter()
+        .skip(1)
+        .position(|line| line["type"] != "rule_skipped")
+        .map_or(lines.len(), |index| index + 1);
+    assert!(
+        lines[1..first_other]
+            .iter()
+            .all(|line| line["type"] == "rule_skipped"),
+        "{lines:#?}"
+    );
+    assert_eq!(of_type(&lines, "rule_skipped").len(), first_other - 1);
+}
+
+#[test]
+fn analyze_writes_the_skipped_rules_with_summary_and_severity() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary", "--severity", "low"]);
+
+    assert_eq!(skipped_rule_ids(&lines).len(), 3, "{lines:#?}");
+}
+
+#[test]
+fn analyze_skips_the_attack_rules_that_need_s3_data_events() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--ruleset", "attack-v20"]);
+
+    let skipped = skipped_rule_ids(&lines);
+    for id in [
+        "cross_account_s3_destruction",
+        "s3_delete_burst",
+        "s3_object_read_or_copy",
+        "s3_ransom_encryption",
+        "s3_ssec_encryption",
+    ] {
+        assert!(skipped.contains(&id), "{id}: {skipped:?}");
+    }
+}
+
+#[test]
 fn analyze_writes_scenario_matches_of_the_ingested_events() {
     let case = AnalyzeCase::new();
 
@@ -390,7 +472,11 @@ fn analyze_writes_only_the_listed_severities() {
 
     assert_eq!(test_records(&low, "signal").len(), 2, "{low:#?}");
     assert!(test_records(&low, "scenario_match").is_empty(), "{low:#?}");
-    for line in low.iter().skip(1) {
+    for line in low
+        .iter()
+        .skip(1)
+        .filter(|line| line["type"] != "rule_skipped")
+    {
         assert_eq!(line["severity"], "low", "{line}");
     }
     assert!(
@@ -402,7 +488,11 @@ fn analyze_writes_only_the_listed_severities() {
         1,
         "{medium_and_high:#?}"
     );
-    for line in medium_and_high.iter().skip(1) {
+    for line in medium_and_high
+        .iter()
+        .skip(1)
+        .filter(|line| line["type"] != "rule_skipped")
+    {
         assert!(
             ["medium", "high"].contains(&line["severity"].as_str().unwrap()),
             "{line}"

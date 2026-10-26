@@ -1,0 +1,15 @@
+kind: scenario
+id: cross_account_s3_destruction
+title: クロスアカウントのロール引き受けから S3 データを持ち出して削除する
+severity: critical
+tactics: [TA0001, TA0007, TA0010, TA0040]
+window: 1h
+steps:
+  - signal: cross_account_assume_role
+  - signal: s3_bucket_enumeration
+    optional: true
+  - signal: s3_object_read_or_copy
+    same: [bucket]
+  - signal: s3_delete_burst
+    max_gap: 30m
+    same: [bucket]

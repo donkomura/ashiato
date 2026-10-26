@@ -1,11 +1,13 @@
 use std::fmt;
 
-use ashiato_core::analysis::{AnalysisError, analyze};
+use ashiato_core::AnalysisWindow;
+use ashiato_core::analysis::{AnalysisError, analyze, skipped_rules};
 use ashiato_core::fixture::{Expectation, Fixture, fixture_window};
+use ashiato_core::query::QueryBackend;
 use ashiato_core::query::query_signal_rule;
-use ashiato_core::rule::{Rule, Rules};
+use ashiato_core::rule::{Rule, Rules, SignalRule};
 
-use crate::{EventStore, IngestError};
+use crate::{DuckDbBackend, EventStore, IngestError};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FixtureReport {
@@ -130,10 +132,7 @@ pub async fn run_fixture(
 
     let window = fixture_window();
     let detections = match rule {
-        Rule::Signal(rule) => query_signal_rule(&backend, rule, &window)
-            .await
-            .map(|signals| Detections::Signals(signals.len()))
-            .map_err(AnalysisError::from),
+        Rule::Signal(rule) => signal_detections(&backend, rules, rule, &window).await,
         Rule::Scenario(scenario) => analyze(&backend, rules, &window).await.map(|analysis| {
             let matches = analysis
                 .matches
@@ -160,4 +159,24 @@ pub async fn run_fixture(
             detections,
         }
     }))
+}
+
+async fn signal_detections(
+    backend: &DuckDbBackend,
+    rules: &Rules,
+    rule: &SignalRule,
+    window: &AnalysisWindow,
+) -> Result<Detections, AnalysisError> {
+    let data = backend
+        .data_availability(window)
+        .await
+        .map_err(AnalysisError::DataAvailability)?;
+    if skipped_rules(rules, &data)
+        .iter()
+        .any(|skipped| skipped.rule_id == rule.id)
+    {
+        return Ok(Detections::Signals(0));
+    }
+    let signals = query_signal_rule(backend, rule, window).await?;
+    Ok(Detections::Signals(signals.len()))
 }

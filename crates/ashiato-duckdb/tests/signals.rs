@@ -4,7 +4,9 @@ use std::io::Write;
 use ashiato_core::AnalysisWindow;
 use ashiato_core::SignalRow;
 use ashiato_core::macros::Dialect;
-use ashiato_core::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
+use ashiato_core::query::{
+    BackendError, DataAvailability, QueryBackend, SignalQueryError, query_signal_rule,
+};
 use ashiato_core::record::RecordBuilder;
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
@@ -328,4 +330,68 @@ async fn query_signals_can_be_called_on_a_workspace_without_events() {
         .unwrap();
 
     assert_eq!(signals, Vec::new());
+}
+
+fn list_buckets(event_id: &str, event_time: &str) -> Value {
+    RecordBuilder::new()
+        .set("eventID", event_id)
+        .set("eventTime", event_time)
+        .set("eventSource", "s3.amazonaws.com")
+        .set("eventName", "ListBuckets")
+        .set("eventCategory", "Management")
+        .build()
+}
+
+#[tokio::test]
+async fn data_availability_counts_the_events_of_the_analysis_window() {
+    let Workspace { backend, .. } = workspace(&[
+        list_buckets("evt-1", "2026-10-01T10:00:00Z"),
+        list_buckets("evt-2", "2026-10-01T11:00:00Z"),
+        list_buckets("evt-before", "2026-09-30T23:59:59Z"),
+        list_buckets("evt-after", "2026-10-02T00:00:00Z"),
+    ]);
+
+    let data = backend.data_availability(&window()).await.unwrap();
+
+    assert_eq!(
+        data,
+        DataAvailability {
+            events: 2,
+            s3_data_events: false,
+        }
+    );
+}
+
+#[tokio::test]
+async fn s3_data_events_are_available_when_the_window_has_one() {
+    let Workspace { backend, .. } = workspace(&[
+        list_buckets("evt-list", "2026-10-01T10:00:00Z"),
+        delete_object("evt-delete", "2026-10-01T10:01:00Z", "customer-data"),
+    ]);
+
+    let data = backend.data_availability(&window()).await.unwrap();
+
+    assert!(data.s3_data_events, "{data:?}");
+}
+
+#[tokio::test]
+async fn s3_data_events_outside_the_window_are_not_counted() {
+    let Workspace { backend, .. } = workspace(&[
+        list_buckets("evt-list", "2026-10-01T10:00:00Z"),
+        delete_object("evt-delete", "2026-09-30T10:00:00Z", "customer-data"),
+    ]);
+
+    let data = backend.data_availability(&window()).await.unwrap();
+
+    assert!(!data.s3_data_events, "{data:?}");
+}
+
+#[tokio::test]
+async fn data_availability_of_a_workspace_without_events_is_empty() {
+    let dir = TempDir::new().unwrap();
+    let backend = DuckDbBackend::open(&dir.path().join("ashiato.duckdb")).unwrap();
+
+    let data = backend.data_availability(&window()).await.unwrap();
+
+    assert_eq!(data, DataAvailability::default());
 }

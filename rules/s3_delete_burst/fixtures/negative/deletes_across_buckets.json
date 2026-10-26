@@ -1,0 +1,106 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:10:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "DeleteObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "key": "data/0.csv",
+        "Host": "customer-data.s3.amazonaws.com"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-data/data/0.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:11:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "DeleteObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-logs",
+        "key": "data/1.csv",
+        "Host": "customer-logs.s3.amazonaws.com"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-logs/data/1.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:12:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "DeleteObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-backup",
+        "key": "data/2.csv",
+        "Host": "customer-backup.s3.amazonaws.com"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-backup/data/2.csv"
+        }
+      ]
+    }
+  ]
+}

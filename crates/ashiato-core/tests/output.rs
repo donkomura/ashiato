@@ -2,10 +2,11 @@ use std::collections::BTreeMap;
 
 use ashiato_core::lineage::{LineageStep, Origin, OriginKind};
 use ashiato_core::output::{
-    JsonLinesSink, OutputRecord, RunRecord, ScenarioMatchRecord, SignalEvidence, SignalRecord,
-    Sink, StepRecord,
+    JsonLinesSink, OutputRecord, RuleSkippedRecord, RunRecord, ScenarioMatchRecord, SignalEvidence,
+    SignalRecord, Sink, SkipReason, StepRecord,
 };
-use ashiato_core::rule::RuleSourceDigest;
+use ashiato_core::query::DataAvailability;
+use ashiato_core::rule::{DataRequirement, RuleSourceDigest};
 use ashiato_core::ruleset::RulesetDigest;
 use ashiato_core::{Severity, Tactic};
 use serde_json::{Value, json};
@@ -43,6 +44,10 @@ fn run_record() -> OutputRecord {
             id: "default".to_owned(),
             digest: "sha256:def".to_owned(),
         }],
+        data: DataAvailability {
+            events: 12345678,
+            s3_data_events: true,
+        },
     })
 }
 
@@ -70,6 +75,24 @@ fn run_record_has_the_shape_of_design_section_11() {
             "until": "2026-10-25T00:00:00Z",
             "rule_sources": [{ "id": "builtin", "digest": "sha256:abc" }],
             "rulesets": [{ "id": "default", "digest": "sha256:def" }],
+            "data": { "events": 12345678, "s3_data_events": true },
+        })
+    );
+}
+
+#[test]
+fn rule_skipped_record_has_the_shape_of_design_section_11() {
+    assert_eq!(
+        written(OutputRecord::RuleSkipped(RuleSkippedRecord {
+            rule_id: "cross_account_s3_destruction".to_owned(),
+            reason: SkipReason::MissingData,
+            requires: vec![DataRequirement::S3DataEvents],
+        })),
+        json!({
+            "type": "rule_skipped",
+            "rule_id": "cross_account_s3_destruction",
+            "reason": "missing_data",
+            "requires": ["s3_data_events"],
         })
     );
 }

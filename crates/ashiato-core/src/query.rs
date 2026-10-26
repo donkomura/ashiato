@@ -1,8 +1,9 @@
 use async_trait::async_trait;
+use serde::Serialize;
 
 use crate::lineage::LineageEdge;
 use crate::macros::{Dialect, MacroContext, MacroError, expand};
-use crate::rule::SignalRule;
+use crate::rule::{DataRequirement, SignalRule};
 use crate::{AnalysisWindow, SignalRow};
 
 const BASELINE_CTES: &str = "\
@@ -25,10 +26,28 @@ baseline_principals AS (
 )";
 const WITH_KEYWORD: &str = "with";
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+pub struct DataAvailability {
+    pub events: u64,
+    pub s3_data_events: bool,
+}
+
+impl DataAvailability {
+    pub fn satisfies(&self, requirement: DataRequirement) -> bool {
+        match requirement {
+            DataRequirement::S3DataEvents => self.s3_data_events,
+        }
+    }
+}
+
 #[async_trait]
 pub trait QueryBackend: Send + Sync {
     fn dialect(&self) -> Dialect;
     async fn query_signals(&self, sql: &str) -> Result<Vec<SignalRow>, BackendError>;
+    async fn data_availability(
+        &self,
+        window: &AnalysisWindow,
+    ) -> Result<DataAvailability, BackendError>;
     async fn query_lineage(
         &self,
         window: &AnalysisWindow,

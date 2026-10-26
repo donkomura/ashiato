@@ -238,7 +238,11 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         until: window.until(),
         rule_sources: selection.rules.rule_sources().to_vec(),
         rulesets: selection.rulesets,
+        data: analysis.data,
     }))?;
+    for skipped in &analysis.skipped {
+        sink.write(&OutputRecord::RuleSkipped(skipped.clone()))?;
+    }
     if args.summary {
         for summary in analysis.summarize() {
             sink.write(&OutputRecord::Summary(summary))?;
