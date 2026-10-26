@@ -1,0 +1,55 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "servicequotas.amazonaws.com",
+      "eventName": "RequestServiceQuotaIncrease",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0 exe/x86_64.ubuntu.22",
+      "requestParameters": {
+        "serviceCode": "ec2",
+        "quotaCode": "L-417A185B",
+        "desiredValue": 256
+      },
+      "recipientAccountId": "111111111111"
+    },
+    {
+      "eventTime": "2026-10-01T11:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDABOB",
+        "arn": "arn:aws:iam::111111111111:user/bob",
+        "accountId": "111111111111",
+        "userName": "bob",
+        "accessKeyId": "AKIABOB"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0 exe/x86_64.ubuntu.22",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "instancesSet": {
+          "items": [
+            {
+              "imageId": "ami-0123456789abcdef0",
+              "minCount": 1,
+              "maxCount": 10
+            }
+          ]
+        }
+      },
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}
