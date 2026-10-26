@@ -14,7 +14,7 @@ const NORMALIZE_EVENTS_SQL: &str = include_str!("../sql/normalize_events.sql");
 const LOAD_FILE_SQL: &str = "CREATE OR REPLACE TEMP TABLE loaded_records AS \
      SELECT unnest(Records) AS record \
      FROM read_json(?, columns = {'Records': 'JSON[]'}, compression = 'gzip', \
-     maximum_object_size = 1073741824)";
+     maximum_object_size = 268435456)";
 const LOAD_RECORDS_SQL: &str = "CREATE OR REPLACE TEMP TABLE loaded_records AS \
      SELECT unnest(CAST(CAST(? AS JSON) AS JSON[])) AS record";
 
