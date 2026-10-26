@@ -1,5 +1,6 @@
 use std::fs::{self, File};
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use ashiato_core::record::RecordBuilder;
@@ -395,18 +396,18 @@ fn ingest_accepts_records_of_different_shapes_in_one_file() {
 }
 
 #[test]
-fn ingest_reads_log_files_larger_than_16_mib() {
+fn ingest_reads_a_log_file_larger_than_16_mib() {
     let padding = "x".repeat(1024 * 1024);
     let records: Vec<Value> = (0..20)
-        .map(|index| {
+        .map(|i| {
             RecordBuilder::new()
-                .set("eventID", format!("evt-large-{index}"))
+                .set("eventID", format!("evt-large-{i}"))
                 .set("requestParameters", json!({ "padding": padding }))
                 .build()
         })
         .collect();
 
-    let Ingested { summary, db, .. } = ingest_records(&records);
+    let Ingested { db, summary, .. } = ingest_records(&records);
 
     assert_eq!(summary.events, 20);
     assert_eq!(count(&db, "events"), 20);
@@ -584,6 +585,49 @@ fn same_event_id_in_different_files_is_stored_once() {
     let expected = ["evt-account-only", "evt-org-only", "evt-shared"];
     assert_eq!(event_ids(&db, "events"), expected);
     assert_eq!(event_ids(&db, "events_raw"), expected);
+}
+
+#[test]
+fn ingest_with_several_jobs_stores_each_file_and_event_once() {
+    let dir = TempDir::new().unwrap();
+    let source = dir.path().join("source");
+    let record = |id: String| RecordBuilder::new().set("eventID", id).build();
+    for file in 0..8 {
+        write_log(
+            &source,
+            &format!("{LOG_DIR}/log-{file}.json.gz"),
+            &[
+                record(format!("evt-{file}")),
+                record(format!("evt-shared-{}", file % 2)),
+            ],
+        );
+    }
+    for copy in 0..4 {
+        fs::copy(
+            source.join(LOG_DIR).join("log-0.json.gz"),
+            source.join(LOG_DIR).join(format!("copy-{copy}.json.gz")),
+        )
+        .unwrap();
+    }
+    let db_path = dir.path().join("ashiato.duckdb");
+
+    let summary = EventStore::open(&db_path)
+        .unwrap()
+        .ingest_directory_with_jobs(&source, NonZeroUsize::new(4).unwrap())
+        .unwrap();
+
+    assert_eq!(
+        summary,
+        IngestSummary {
+            files: 8,
+            skipped_files: 4,
+            events: 10,
+        }
+    );
+    let db = duckdb::Connection::open(&db_path).unwrap();
+    assert_eq!(count(&db, "events"), 10);
+    assert_eq!(count(&db, "events_raw"), 10);
+    assert_eq!(count(&db, "ingested_files"), 8);
 }
 
 #[test]

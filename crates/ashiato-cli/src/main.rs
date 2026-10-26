@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, BufWriter, Write};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
@@ -22,6 +23,7 @@ const S3_SCHEME: &str = "s3://";
 const RULE_EXTENSION: &str = "yaml";
 const FIXTURE_EXTENSION: &str = "json";
 const BASELINE_LOOKBACK_DAYS: i64 = 30;
+const DEFAULT_INGEST_JOBS: NonZeroUsize = NonZeroUsize::new(4).unwrap();
 
 #[derive(Parser)]
 #[command(name = "ashiato", version)]
@@ -66,6 +68,8 @@ struct IngestArgs {
     from: Option<NaiveDate>,
     #[arg(long, value_parser = parse_date)]
     to: Option<NaiveDate>,
+    #[arg(long, default_value_t = DEFAULT_INGEST_JOBS)]
+    jobs: NonZeroUsize,
 }
 
 #[derive(clap::Args)]
@@ -125,7 +129,7 @@ fn ingest(args: &IngestArgs) -> anyhow::Result<()> {
         None => PathBuf::from(&args.source),
     };
     let store = EventStore::open(&args.workspace.join(DATABASE_FILE))?;
-    let summary = store.ingest_directory(&source)?;
+    let summary = store.ingest_directory_with_jobs(&source, args.jobs)?;
     eprintln!(
         "ingested {} files ({} skipped as already ingested), {} events",
         summary.files, summary.skipped_files, summary.events

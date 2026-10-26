@@ -66,6 +66,59 @@ fn ingest_creates_workspace_and_loads_local_logs() {
     assert_eq!(events, 2);
 }
 
+#[test]
+fn ingest_loads_logs_with_the_given_number_of_jobs() {
+    let dir = TempDir::new().unwrap();
+    for file in 0..3 {
+        write_log(
+            &dir.path().join(format!("source/log-{file}.json.gz")),
+            &[RecordBuilder::new()
+                .set("eventID", format!("evt-{file}"))
+                .build()],
+        );
+    }
+    let workspace = dir.path().join("case");
+
+    let output = ashiato()
+        .arg("ingest")
+        .arg("--workspace")
+        .arg(&workspace)
+        .arg("--source")
+        .arg(dir.path().join("source"))
+        .args(["--jobs", "2"])
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let db = duckdb::Connection::open(workspace.join("ashiato.duckdb")).unwrap();
+    let events: i64 = db
+        .query_row("SELECT count(*) FROM events", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(events, 3);
+}
+
+#[test]
+fn ingest_rejects_zero_jobs() {
+    let dir = TempDir::new().unwrap();
+    fs::create_dir_all(dir.path().join("source")).unwrap();
+
+    let output = ashiato()
+        .arg("ingest")
+        .arg("--workspace")
+        .arg(dir.path().join("case"))
+        .arg("--source")
+        .arg(dir.path().join("source"))
+        .args(["--jobs", "0"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+}
+
 fn assert_ingest_fails(source: &str, extra_args: &[&str], message: &str) {
     let dir = TempDir::new().unwrap();
 
