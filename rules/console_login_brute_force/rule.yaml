@@ -1,0 +1,28 @@
+kind: signal
+id: console_login_brute_force
+title: 1 つの送信元からのコンソールへのログイン失敗の集中
+severity: medium
+tactics: [TA0006]
+params:
+  min_failures: 10
+  bin: 1h
+attrs: [failures]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    cast(NULL AS VARCHAR)    AS access_key_id,
+    coalesce(min(principal_key), concat('unknown:', recipient_account_id)) AS principal_key,
+    source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    cast(count(*) AS VARCHAR) AS attr_failures
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'signin.amazonaws.com'
+    AND event_name = 'ConsoleLogin'
+    AND {{ json(response_elements, '$.ConsoleLogin') }} = 'Failure'
+  GROUP BY source_ip, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_failures') }}

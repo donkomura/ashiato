@@ -15,6 +15,10 @@ pub use backend::DuckDbBackend;
 const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
 const STAGE_RECORDS_SQL: &str = include_str!("../sql/stage_records.sql");
 const NORMALIZE_EVENTS_SQL: &str = include_str!("../sql/normalize_events.sql");
+// A log file is a single {"Records": [...]} object, and read_json rejects objects over
+// 16 MiB by default. The flaws.cloud dataset has files of about 140 MB once decompressed,
+// so the limit is raised to 256 MiB. DuckDB allocates twice the limit for each read, so a
+// larger limit runs out of memory when several files are ingested in parallel.
 const LOAD_FILE_SQL: &str = "CREATE OR REPLACE TEMP TABLE loaded_records AS \
      SELECT unnest(Records) AS record \
      FROM read_json(?, columns = {'Records': 'JSON[]'}, compression = 'gzip', \

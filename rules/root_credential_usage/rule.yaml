@@ -1,0 +1,25 @@
+kind: signal
+id: root_credential_usage
+title: ルートユーザーの認証情報による API 呼び出し
+severity: low
+tactics: [TA0001, TA0004]
+params:
+  bin: 1h
+attrs: [calls]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    cast(count(*) AS VARCHAR) AS attr_calls
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND identity_type = 'Root'
+    AND invoked_by IS NULL
+  GROUP BY access_key_id, principal_key, source_ip, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}

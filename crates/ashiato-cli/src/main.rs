@@ -5,6 +5,7 @@ use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
+use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
 use ashiato_core::AnalysisWindow;
 use ashiato_core::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::lineage::LineageWarning;
@@ -17,6 +18,8 @@ use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta, Utc};
 use clap::{Parser, Subcommand};
 
 const DATABASE_FILE: &str = "ashiato.duckdb";
+const EVIDENCE_DIR: &str = "evidence";
+const S3_SCHEME: &str = "s3://";
 const RULE_EXTENSION: &str = "yaml";
 const FIXTURE_EXTENSION: &str = "json";
 const BASELINE_LOOKBACK_DAYS: i64 = 30;
@@ -31,14 +34,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    Ingest {
-        #[arg(long)]
-        workspace: PathBuf,
-        #[arg(long)]
-        source: String,
-        #[arg(long, default_value_t = DEFAULT_INGEST_JOBS)]
-        jobs: NonZeroUsize,
-    },
+    Ingest(IngestArgs),
     Analyze(AnalyzeArgs),
     Rules {
         #[command(subcommand)]
@@ -59,6 +55,24 @@ struct RulesArgs {
 }
 
 #[derive(clap::Args)]
+struct IngestArgs {
+    #[arg(long)]
+    workspace: PathBuf,
+    #[arg(long)]
+    source: String,
+    #[arg(long, value_delimiter = ',')]
+    accounts: Vec<String>,
+    #[arg(long, value_delimiter = ',')]
+    regions: Vec<String>,
+    #[arg(long, value_parser = parse_date)]
+    from: Option<NaiveDate>,
+    #[arg(long, value_parser = parse_date)]
+    to: Option<NaiveDate>,
+    #[arg(long, default_value_t = DEFAULT_INGEST_JOBS)]
+    jobs: NonZeroUsize,
+}
+
+#[derive(clap::Args)]
 struct AnalyzeArgs {
     #[arg(long)]
     workspace: PathBuf,
@@ -74,11 +88,7 @@ struct AnalyzeArgs {
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
-        Command::Ingest {
-            workspace,
-            source,
-            jobs,
-        } => ingest(&workspace, &source, jobs),
+        Command::Ingest(args) => ingest(&args),
         Command::Analyze(args) => analyze(&args),
         Command::Rules {
             command: RulesCommand::Validate(args),
@@ -89,17 +99,59 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn ingest(workspace: &Path, source: &str, jobs: NonZeroUsize) -> anyhow::Result<()> {
-    if source.starts_with("s3://") {
-        bail!("S3 sources are not supported yet: {source}");
+fn ingest(args: &IngestArgs) -> anyhow::Result<()> {
+    let filter = KeyFilter {
+        accounts: args.accounts.clone(),
+        regions: args.regions.clone(),
+        from: args.from,
+        to: args.to,
+    };
+    if let (Some(from), Some(to)) = (filter.from, filter.to)
+        && from > to
+    {
+        bail!("--from must not be after --to, but got {from} and {to}");
     }
-    fs::create_dir_all(workspace)
-        .with_context(|| format!("failed to create workspace {}", workspace.display()))?;
-    let store = EventStore::open(&workspace.join(DATABASE_FILE))?;
-    let summary = store.ingest_directory_with_jobs(Path::new(source), jobs)?;
+    let s3_location = if args.source.starts_with(S3_SCHEME) {
+        Some(S3Location::parse(&args.source)?)
+    } else if filter.is_unrestricted() {
+        None
+    } else {
+        bail!("--accounts, --regions, --from and --to apply only to S3 sources");
+    };
+    fs::create_dir_all(&args.workspace)
+        .with_context(|| format!("failed to create workspace {}", args.workspace.display()))?;
+    let source = match s3_location {
+        Some(location) => {
+            let evidence = args.workspace.join(EVIDENCE_DIR);
+            download_evidence(&location, &filter, &evidence)?;
+            evidence
+        }
+        None => PathBuf::from(&args.source),
+    };
+    let store = EventStore::open(&args.workspace.join(DATABASE_FILE))?;
+    let summary = store.ingest_directory_with_jobs(&source, args.jobs)?;
     eprintln!(
         "ingested {} files ({} skipped as already ingested), {} events",
         summary.files, summary.skipped_files, summary.events
+    );
+    Ok(())
+}
+
+fn download_evidence(
+    location: &S3Location,
+    filter: &KeyFilter,
+    evidence: &Path,
+) -> anyhow::Result<()> {
+    let summary = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(async {
+            let store = AwsObjectStore::connect(&location.bucket).await?;
+            download(&store, location, filter, evidence).await
+        })?;
+    eprintln!(
+        "downloaded {} files ({} skipped as already downloaded)",
+        summary.downloaded, summary.skipped
     );
     Ok(())
 }
@@ -198,6 +250,11 @@ fn rule_sets(dir: Option<&Path>) -> anyhow::Result<Vec<RuleSet>> {
         sets.push(load_rule_set(dir)?);
     }
     Ok(sets)
+}
+
+fn parse_date(text: &str) -> Result<NaiveDate, String> {
+    NaiveDate::parse_from_str(text, "%Y-%m-%d")
+        .map_err(|_| format!("expected YYYY-MM-DD, but got {text}"))
 }
 
 fn parse_time(text: &str) -> Result<DateTime<Utc>, String> {

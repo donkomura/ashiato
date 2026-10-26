@@ -1,0 +1,11 @@
+kind: scenario
+id: leaked_key_compute_hijack_attempt
+title: 漏洩したアクセスキーによる、計算資源の乗っ取りの試行
+severity: high
+tactics: [TA0001, TA0007, TA0040]
+window: 24h
+steps:
+  - signal: first_seen_identity_probe
+    same: [caller_ip]
+  - signal: compute_launch_attempts
+    same: [caller_ip]

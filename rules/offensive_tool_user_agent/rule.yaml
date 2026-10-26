@@ -1,0 +1,36 @@
+kind: signal
+id: offensive_tool_user_agent
+title: 侵入テスト用ディストリビューションや認証情報探索ツールからの API 呼び出し
+severity: medium
+tactics: [TA0006, TA0007]
+params:
+  bin: 1h
+attrs: [tool, calls]
+sql: |
+  WITH tagged AS (
+    SELECT
+      *,
+      CASE
+        WHEN strpos(lower(user_agent), '-kali') > 0 THEN 'kali'
+        WHEN strpos(lower(user_agent), 'parrot') > 0 THEN 'parrot'
+        WHEN strpos(lower(user_agent), 'pentoo') > 0 THEN 'pentoo'
+        WHEN strpos(lower(user_agent), 'trufflehog') > 0 THEN 'trufflehog'
+      END AS tool
+    FROM events
+    WHERE {{ in_analysis_window(event_time) }}
+  )
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    tool                     AS attr_tool,
+    cast(count(*) AS VARCHAR) AS attr_calls
+  FROM tagged
+  WHERE tool IS NOT NULL
+  GROUP BY access_key_id, principal_key, source_ip, recipient_account_id, tool,
+           {{ time_bin(event_time, param('bin')) }}

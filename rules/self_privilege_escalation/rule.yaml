@@ -1,0 +1,106 @@
+kind: signal
+id: self_privilege_escalation
+title: 拒否された API を、自分自身への権限付与の後に成功させる権限昇格
+severity: high
+tactics: [TA0004]
+attrs: [apis]
+sql: |
+  WITH grants AS (
+    SELECT
+      *,
+      {{ json(request_parameters, '$.userName') }} AS target_user,
+      {{ json(request_parameters, '$.roleName') }} AS target_role
+    FROM events
+    WHERE {{ in_analysis_window(event_time) }}
+      AND event_source = 'iam.amazonaws.com'
+      AND event_name IN (
+        'AttachUserPolicy',
+        'PutUserPolicy',
+        'AddUserToGroup',
+        'AttachRolePolicy',
+        'PutRolePolicy'
+      )
+      AND error_code IS NULL
+  ),
+  self_grants AS (
+    SELECT *
+    FROM grants
+    WHERE (
+        target_user IS NOT NULL
+        AND principal_key LIKE '%:user/%'
+        AND substr(principal_key, length(principal_key) - length(target_user)) = concat('/', target_user)
+      )
+      OR (
+        target_role IS NOT NULL
+        AND principal_key LIKE '%:role/%'
+        AND substr(principal_key, length(principal_key) - length(target_role)) = concat('/', target_role)
+      )
+  ),
+  denied AS (
+    SELECT *
+    FROM events
+    WHERE error_code IN (
+      'AccessDenied',
+      'AccessDeniedException',
+      'UnauthorizedOperation',
+      'Client.UnauthorizedOperation'
+    )
+  ),
+  succeeded AS (
+    SELECT * FROM events WHERE error_code IS NULL
+  ),
+  matches AS (
+    SELECT
+      g.event_id   AS grant_id,
+      g.event_time AS grant_time,
+      d.event_id   AS denied_id,
+      d.event_time AS denied_time,
+      s.event_id   AS success_id,
+      s.event_time AS success_time,
+      s.event_name AS api
+    FROM self_grants g
+    JOIN denied d
+      ON d.principal_key = g.principal_key
+     AND d.event_time < g.event_time
+     AND d.event_time >= g.event_time - INTERVAL '24 hours'
+    JOIN succeeded s
+      ON s.principal_key = g.principal_key
+     AND s.event_source = d.event_source
+     AND s.event_name = d.event_name
+     AND s.event_time > g.event_time
+     AND s.event_time <= g.event_time + INTERVAL '24 hours'
+  ),
+  evidence AS (
+    SELECT grant_id, denied_id AS event_id, denied_time AS event_time FROM matches
+    UNION
+    SELECT grant_id, grant_id, grant_time FROM matches
+    UNION
+    SELECT grant_id, success_id, success_time FROM matches
+  ),
+  spans AS (
+    SELECT
+      grant_id,
+      min(event_time)     AS first_time,
+      max(event_time)     AS last_time,
+      array_agg(event_id) AS event_ids
+    FROM evidence
+    GROUP BY grant_id
+  ),
+  apis AS (
+    SELECT grant_id, cast(array_agg(DISTINCT api ORDER BY api) AS VARCHAR) AS apis
+    FROM matches
+    GROUP BY grant_id
+  )
+  SELECT
+    spans.first_time       AS start_time,
+    spans.last_time        AS end_time,
+    spans.event_ids,
+    g.access_key_id,
+    g.principal_key,
+    g.source_ip,
+    g.recipient_account_id AS account_id,
+    g.aws_region           AS region,
+    apis.apis              AS attr_apis
+  FROM self_grants g
+  JOIN spans ON spans.grant_id = g.event_id
+  JOIN apis ON apis.grant_id = g.event_id

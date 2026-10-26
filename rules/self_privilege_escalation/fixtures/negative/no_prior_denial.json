@@ -1,0 +1,45 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:05:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "AttachUserPolicy",
+      "awsRegion": "us-east-1",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "userName": "alice",
+        "policyArn": "arn:aws:iam::aws:policy/AdministratorAccess"
+      },
+      "recipientAccountId": "111111111111"
+    },
+    {
+      "eventTime": "2026-10-01T10:06:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "ListSecrets",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}

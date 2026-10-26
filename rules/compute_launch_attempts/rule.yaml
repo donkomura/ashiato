@@ -1,0 +1,34 @@
+kind: signal
+id: compute_launch_attempts
+title: 多数のインスタンスタイプにわたる、失敗したインスタンス起動の集中
+severity: high
+tactics: [TA0040]
+params:
+  min_attempts: 20
+  min_instance_types: 5
+  bin: 1h
+attrs: [caller_ip, attempts, instance_types]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    source_ip                AS attr_caller_ip,
+    cast(count(*) AS VARCHAR) AS attr_attempts,
+    cast(count(DISTINCT {{ json(request_parameters, '$.instanceType') }}) AS VARCHAR)
+                             AS attr_instance_types
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'ec2.amazonaws.com'
+    AND event_name = 'RunInstances'
+    AND error_code IS NOT NULL
+  GROUP BY access_key_id, principal_key, source_ip, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_attempts') }}
+     AND count(DISTINCT {{ json(request_parameters, '$.instanceType') }})
+         >= {{ param('min_instance_types') }}

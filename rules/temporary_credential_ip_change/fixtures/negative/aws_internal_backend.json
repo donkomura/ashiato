@@ -1,0 +1,66 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "ListBuckets",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAADMIN:alice",
+        "arn": "arn:aws:sts::111111111111:assumed-role/admin/alice",
+        "accountId": "111111111111",
+        "accessKeyId": "ASIAADMIN",
+        "sessionContext": {
+          "sessionIssuer": {
+            "type": "Role",
+            "principalId": "AROAADMIN",
+            "arn": "arn:aws:iam::111111111111:role/admin",
+            "accountId": "111111111111",
+            "userName": "admin"
+          },
+          "attributes": {
+            "creationDate": "2026-10-01T09:00:00Z",
+            "mfaAuthenticated": "false"
+          }
+        }
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "console.amazonaws.com",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketLocation",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAADMIN:alice",
+        "arn": "arn:aws:sts::111111111111:assumed-role/admin/alice",
+        "accountId": "111111111111",
+        "accessKeyId": "ASIAADMIN",
+        "sessionContext": {
+          "sessionIssuer": {
+            "type": "Role",
+            "principalId": "AROAADMIN",
+            "arn": "arn:aws:iam::111111111111:role/admin",
+            "accountId": "111111111111",
+            "userName": "admin"
+          },
+          "attributes": {
+            "creationDate": "2026-10-01T09:00:00Z",
+            "mfaAuthenticated": "false"
+          }
+        }
+      },
+      "sourceIPAddress": "198.51.100.200",
+      "userAgent": "[S3Console/0.4, aws-internal/3 aws-sdk-java/1.11.347]",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}
