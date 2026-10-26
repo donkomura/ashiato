@@ -1,0 +1,34 @@
+kind: signal
+id: security_alerting_disabled
+title: 1 つのセッションで集中した、CloudWatch のアラームや EventBridge のルールの削除と無効化
+severity: medium
+tactics: [TA0112]
+params:
+  min_changes: 3
+  bin: 10m
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND (
+      (
+        event_source = 'monitoring.amazonaws.com'
+        AND event_name IN ('DeleteAlarms', 'DisableAlarmActions')
+      )
+      OR (
+        event_source = 'events.amazonaws.com'
+        AND event_name IN ('DisableRule', 'DeleteRule')
+      )
+    )
+  GROUP BY access_key_id, principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_changes') }}

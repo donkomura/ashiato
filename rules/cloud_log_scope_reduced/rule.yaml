@@ -1,0 +1,35 @@
+kind: signal
+id: cloud_log_scope_reduced
+title: CloudTrail の記録対象や証跡の設定の変更、イベントデータストアやログの削除
+severity: high
+tactics: [TA0112]
+attrs: [action]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    event_name           AS attr_action
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND (
+      (
+        event_source = 'cloudtrail.amazonaws.com'
+        AND event_name IN (
+          'PutEventSelectors',
+          'UpdateTrail',
+          'DeleteEventDataStore',
+          'StopEventDataStoreIngestion'
+        )
+      )
+      OR (
+        event_source = 'logs.amazonaws.com'
+        AND event_name IN ('DeleteLogGroup', 'DeleteLogStream')
+      )
+    )
