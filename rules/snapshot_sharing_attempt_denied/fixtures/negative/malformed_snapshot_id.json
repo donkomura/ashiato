@@ -1,0 +1,35 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "ModifySnapshotAttribute",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "snapshotId": "snap-0123456789abcdef0",
+        "attributeType": "CREATE_VOLUME_PERMISSION",
+        "createVolumePermission": {
+          "add": {
+            "items": [
+              {
+                "userId": "222222222222"
+              }
+            ]
+          }
+        }
+      },
+      "errorCode": "Client.InvalidSnapshotID.Malformed",
+      "errorMessage": "User is not authorized to perform this operation"
+    }
+  ]
+}
