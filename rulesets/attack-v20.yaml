@@ -35,6 +35,10 @@ rules:
     refs: [T1078.004]
   - id: console_takeover_mining
     refs: [T1078.004, T1059.009, T1496.001]
+  - id: ec2_instance_connect_key_push
+    refs: [T1098.004, T1021.008]
+  - id: federation_token_issued
+    refs: [T1550.001]
   - id: first_seen_account_region_write
     refs: [T1535]
   - id: first_seen_identity_probe
@@ -43,6 +47,8 @@ rules:
     refs: [T1136.003, T1098.001]
   - id: iam_privilege_modification
     refs: [T1098.003, T1556.009]
+  - id: image_registered
+    refs: [T1525]
   - id: kms_key_deletion
     refs: [T1485]
   - id: leaked_key_compute_hijack_attempt
@@ -77,13 +83,23 @@ rules:
     refs: [T1485.001]
   - id: s3_ssec_encryption
     refs: [T1486]
+  - id: secrets_bulk_retrieval
+    refs: [T1555.006]
   - id: security_monitoring_disabled
     refs: [T1685]
   - id: self_privilege_escalation
     refs: [T1098.003]
+  - id: serverless_function_change
+    refs: [T1648, T1546]
+  - id: snapshot_restore_rollback
+    refs: [T1578.001, T1578.004]
   - id: snapshot_shared_externally
     refs: [T1537]
   - id: snapshot_sharing_attempt_denied
     refs: [T1537]
+  - id: ssm_remote_command
+    refs: [T1651, T1021.008]
   - id: temporary_credential_ip_change
     refs: [T1550.001]
+  - id: traffic_mirroring_created
+    refs: [T1040, T1020.001]

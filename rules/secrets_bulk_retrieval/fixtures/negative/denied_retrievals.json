@@ -1,0 +1,234 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-0"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-1"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:02:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-2"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:03:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-3"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:04:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-4"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:05:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-5"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:06:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-6"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:07:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-7"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:08:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-8"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:09:00Z",
+      "eventSource": "secretsmanager.amazonaws.com",
+      "eventName": "GetSecretValue",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "secretId": "prod/app-9"
+      },
+      "recipientAccountId": "111111111111",
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    }
+  ]
+}

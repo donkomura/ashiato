@@ -1,0 +1,28 @@
+kind: signal
+id: secrets_bulk_retrieval
+title: 1 つのセッションで集中した、Secrets Manager のシークレットの取得
+severity: high
+tactics: [TA0006]
+params:
+  min_retrievals: 10
+  bin: 10m
+attrs: [retrievals]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    cast(count(*) AS VARCHAR) AS attr_retrievals
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND event_source = 'secretsmanager.amazonaws.com'
+    AND event_name = 'GetSecretValue'
+  GROUP BY access_key_id, principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_retrievals') }}
