@@ -1,0 +1,32 @@
+kind: signal
+id: first_seen_account_region_write
+title: ベースライン期間にアカウントで使われていないリージョンでの書き込み系 API
+severity: medium
+tactics: [TA0005]
+attrs: [calls, failures]
+sql: |
+  SELECT
+    min(e.event_time)        AS start_time,
+    max(e.event_time)        AS end_time,
+    array_agg(e.event_id)    AS event_ids,
+    e.access_key_id,
+    e.principal_key,
+    e.source_ip,
+    e.recipient_account_id   AS account_id,
+    e.aws_region             AS region,
+    cast(count(*) AS VARCHAR) AS attr_calls,
+    cast(count(e.error_code) AS VARCHAR) AS attr_failures
+  FROM events e
+  WHERE {{ in_analysis_window(e.event_time) }}
+    AND e.read_only = FALSE
+    AND e.recipient_account_id IN (
+      SELECT recipient_account_id FROM events
+      WHERE {{ in_baseline_window(event_time) }}
+    )
+    AND NOT EXISTS (
+      SELECT 1 FROM events b
+      WHERE {{ in_baseline_window(b.event_time) }}
+        AND b.recipient_account_id = e.recipient_account_id
+        AND b.aws_region = e.aws_region
+    )
+  GROUP BY e.access_key_id, e.principal_key, e.source_ip, e.recipient_account_id, e.aws_region
