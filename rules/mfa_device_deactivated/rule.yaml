@@ -2,7 +2,7 @@ kind: signal
 id: mfa_device_deactivated
 title: MFA デバイスの無効化
 severity: medium
-tactics: [TA0005, TA0006]
+tactics: [TA0112, TA0006]
 attrs: [serial_number]
 sql: |
   SELECT

@@ -2,7 +2,7 @@ kind: signal
 id: cloudtrail_logging_disabled
 title: CloudTrail の証跡の停止や削除
 severity: high
-tactics: [TA0005]
+tactics: [TA0112]
 attrs: [trail]
 sql: |
   SELECT

@@ -1,0 +1,79 @@
+id: attack-v20
+title: MITRE ATT&CK v20 Enterprise（IaaS、Identity Provider）
+framework:
+  kind: mitre_attack
+  version: "20.0"
+  url: https://attack.mitre.org/versions/v20/
+rules:
+  - id: access_denied_enumeration
+    refs: [T1580, T1526]
+  - id: assume_role_brute_force
+    refs: [T1087.004]
+  - id: assume_role_by_assumed_role
+    refs: [T1078.004, T1548.005]
+  - id: broad_service_enumeration
+    refs: [T1580, T1526]
+  - id: bucket_name_enumeration
+    refs: [T1580]
+  - id: cloudshell_activity
+    refs: [T1059.009]
+  - id: cloudtrail_logging_disabled
+    refs: [T1685.002]
+  - id: cloudtrail_logging_paused
+    refs: [T1685.002]
+  - id: cloudtrail_tampering_attempt_denied
+    refs: [T1685.002]
+  - id: compute_launch_attempts
+    refs: [T1496.001]
+  - id: compute_resource_launch
+    refs: [T1496.001, T1578.002]
+  - id: console_login_brute_force
+    refs: [T1110.001, T1110.003, T1110.004]
+  - id: console_login_without_mfa
+    refs: [T1078.004]
+  - id: console_takeover_mining
+    refs: [T1078.004, T1059.009, T1496.001]
+  - id: first_seen_account_region_write
+    refs: [T1535]
+  - id: first_seen_identity_probe
+    refs: [T1078.004]
+  - id: iam_persistence
+    refs: [T1136.003, T1098.001]
+  - id: iam_privilege_modification
+    refs: [T1098.003, T1556.009]
+  - id: kms_key_deletion
+    refs: [T1485]
+  - id: leaked_key_compute_hijack_attempt
+    refs: [T1078.004, T1496.001]
+  - id: leaked_key_recon_persistence
+    refs: [T1078.004, T1580, T1098.001]
+  - id: mfa_device_deactivated
+    refs: [T1556.006]
+  - id: novel_api_burst
+    refs: [T1078.004]
+  - id: offensive_tool_user_agent
+    refs: [T1059.009]
+  - id: password_policy_change
+    refs: [T1556]
+  - id: persistence_attempt_denied
+    refs: [T1136.003, T1098.001, T1648]
+  - id: role_chain_escalation
+    refs: [T1548.005, T1098.003]
+  - id: role_session_outlier
+    refs: [T1078.004]
+  - id: root_credential_usage
+    refs: [T1078.004]
+  - id: s3_bucket_permission_change_denied
+    refs: [T1537, T1491.002]
+  - id: s3_bucket_public_access_granted
+    refs: [T1537]
+  - id: security_monitoring_disabled
+    refs: [T1685]
+  - id: self_privilege_escalation
+    refs: [T1098.003]
+  - id: snapshot_shared_externally
+    refs: [T1537]
+  - id: snapshot_sharing_attempt_denied
+    refs: [T1537]
+  - id: temporary_credential_ip_change
+    refs: [T1550.001]
