@@ -11,6 +11,8 @@ rules:
     refs: [T1087.004]
   - id: assume_role_by_assumed_role
     refs: [T1078.004, T1548.005]
+  - id: backup_inhibit_then_destruction
+    refs: [T1490, T1485]
   - id: broad_service_enumeration
     refs: [T1580, T1526]
   - id: bucket_name_enumeration
@@ -37,6 +39,10 @@ rules:
     refs: [T1078.004]
   - id: console_takeover_mining
     refs: [T1078.004, T1059.009, T1496.001]
+  - id: ec2_instance_connect_key_push
+    refs: [T1098.004, T1021.008]
+  - id: federation_token_issued
+    refs: [T1550.001]
   - id: first_seen_account_region_write
     refs: [T1535]
   - id: first_seen_identity_probe
@@ -47,6 +53,8 @@ rules:
     refs: [T1098.003, T1556.009]
   - id: identity_provider_trust_modified
     refs: [T1484.002, T1556.007]
+  - id: image_registered
+    refs: [T1525]
   - id: kms_key_deletion
     refs: [T1485]
   - id: leaked_key_compute_hijack_attempt
@@ -67,6 +75,10 @@ rules:
     refs: [T1136.003, T1098.001, T1648]
   - id: quota_raise_then_mining
     refs: [T1578.005, T1496.001]
+  - id: recovery_inhibited
+    refs: [T1490]
+  - id: resource_destruction_burst
+    refs: [T1485]
   - id: role_chain_escalation
     refs: [T1548.005, T1098.003]
   - id: role_session_outlier
@@ -77,17 +89,31 @@ rules:
     refs: [T1537, T1491.002]
   - id: s3_bucket_public_access_granted
     refs: [T1537]
+  - id: s3_lifecycle_expiration_set
+    refs: [T1485.001]
+  - id: s3_ssec_encryption
+    refs: [T1486]
+  - id: secrets_bulk_retrieval
+    refs: [T1555.006]
   - id: security_alerting_disabled
     refs: [T1685]
   - id: security_monitoring_disabled
     refs: [T1685]
   - id: self_privilege_escalation
     refs: [T1098.003]
+  - id: serverless_function_change
+    refs: [T1648, T1546]
   - id: service_quota_increase
     refs: [T1578.005]
+  - id: snapshot_restore_rollback
+    refs: [T1578.001, T1578.004]
   - id: snapshot_shared_externally
     refs: [T1537]
   - id: snapshot_sharing_attempt_denied
     refs: [T1537]
+  - id: ssm_remote_command
+    refs: [T1651, T1021.008]
   - id: temporary_credential_ip_change
     refs: [T1550.001]
+  - id: traffic_mirroring_created
+    refs: [T1040, T1020.001]

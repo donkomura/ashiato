@@ -1,0 +1,139 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:30:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000000"
+            }
+          ]
+        }
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:31:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000001"
+            }
+          ]
+        }
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:32:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000002"
+            }
+          ]
+        }
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:33:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000003"
+            }
+          ]
+        }
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:34:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000004"
+            }
+          ]
+        }
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "User is not authorized to perform this operation"
+    }
+  ]
+}

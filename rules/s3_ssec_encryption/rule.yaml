@@ -1,0 +1,32 @@
+kind: signal
+id: s3_ssec_encryption
+title: 1 つのセッションで集中した、顧客提供の鍵（SSE-C）による S3 オブジェクトの暗号化
+severity: critical
+tactics: [TA0040]
+requires: [s3_data_events]
+params:
+  min_objects: 5
+  bin: 10m
+attrs: [bucket]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    aws_region               AS region,
+    {{ json(request_parameters, '$.bucketName') }} AS attr_bucket
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND event_source = 's3.amazonaws.com'
+    AND event_category = 'Data'
+    AND event_name IN ('PutObject', 'CopyObject')
+    AND {{ json(additional_event_data, '$.SSEApplied') }} = 'SSE_C'
+  GROUP BY access_key_id, principal_key, recipient_account_id, aws_region,
+           {{ json(request_parameters, '$.bucketName') }},
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_objects') }}
