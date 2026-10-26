@@ -297,17 +297,17 @@ fn analyze_writes_the_run_record_first() {
     assert_eq!(run["tool_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(run["since"], "2026-10-01T00:00:00Z");
     assert_eq!(run["until"], "2026-10-02T00:00:00Z");
-    let rulesets = run["rulesets"].as_array().unwrap();
-    assert_eq!(rulesets.len(), 2, "{run}");
-    assert_eq!(rulesets[0]["id"], "builtin");
+    let rule_sources = run["rule_sources"].as_array().unwrap();
+    assert_eq!(rule_sources.len(), 2, "{run}");
+    assert_eq!(rule_sources[0]["id"], "builtin");
     assert_eq!(
-        rulesets[1]["id"],
+        rule_sources[1]["id"],
         case.rules_dir().to_string_lossy().as_ref()
     );
-    for ruleset in rulesets {
+    for source in rule_sources {
         assert!(
-            ruleset["digest"].as_str().unwrap().starts_with("sha256:"),
-            "{ruleset}"
+            source["digest"].as_str().unwrap().starts_with("sha256:"),
+            "{source}"
         );
     }
     assert_eq!(of_type(&lines, "run").len(), 1);
@@ -722,5 +722,355 @@ fn rules_test_rejects_a_fixture_outside_the_fixture_layout() {
     assert!(
         stderr.contains("test_console_login/login.json"),
         "stderr: {stderr}"
+    );
+}
+
+const TEST_RULESET: &str = r#"
+id: test_attack
+title: 試験用の ATT&CK
+framework:
+  kind: mitre_attack
+  version: "20.0"
+rules:
+  - id: test_console_login
+    refs: [T1078.004]
+  - id: test_repeated_console_login
+"#;
+
+fn write_ruleset(dir: &Path, content: &str) -> PathBuf {
+    let rulesets = dir.join("rulesets");
+    fs::create_dir_all(&rulesets).unwrap();
+    fs::write(rulesets.join("ruleset.yaml"), content).unwrap();
+    rulesets
+}
+
+fn rule_ids(lines: &[serde_json::Value]) -> Vec<String> {
+    let mut ids: Vec<String> = lines
+        .iter()
+        .filter_map(|line| {
+            line["signal_id"]
+                .as_str()
+                .or_else(|| line["scenario_id"].as_str())
+        })
+        .map(str::to_owned)
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+impl AnalyzeCase {
+    fn rulesets_dir(&self) -> PathBuf {
+        write_ruleset(self.dir.path(), TEST_RULESET)
+    }
+
+    fn analyze_failure(&self, extra_args: &[&str]) -> String {
+        let output = ashiato()
+            .arg("analyze")
+            .arg("--workspace")
+            .arg(self.dir.path().join("case"))
+            .args(["--since", "2026-10-01", "--until", "2026-10-02"])
+            .arg("--rules")
+            .arg(self.rules_dir())
+            .arg("--rulesets")
+            .arg(self.rulesets_dir())
+            .args(extra_args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success(), "{output:?}");
+        String::from_utf8_lossy(&output.stderr).into_owned()
+    }
+
+    fn analyze_with_rulesets(&self, extra_args: &[&str]) -> Vec<serde_json::Value> {
+        let rulesets = self.rulesets_dir();
+        let mut args = vec!["--rulesets", rulesets.to_str().unwrap()];
+        args.extend_from_slice(extra_args);
+        self.analyze(&args)
+    }
+}
+
+#[test]
+fn analyze_reports_the_default_ruleset_in_the_run_record() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&[]);
+
+    let rulesets = lines[0]["rulesets"].as_array().unwrap();
+    assert_eq!(rulesets.len(), 1, "{}", lines[0]);
+    assert_eq!(rulesets[0]["id"], "default");
+    assert!(
+        rulesets[0]["digest"]
+            .as_str()
+            .unwrap()
+            .starts_with("sha256:")
+    );
+}
+
+#[test]
+fn analyze_runs_only_the_rules_of_the_given_ruleset() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze_with_rulesets(&["--ruleset", "test_attack", "--emit-signals"]);
+
+    assert_eq!(
+        rule_ids(&lines),
+        ["test_console_login", "test_repeated_console_login"]
+    );
+    let rulesets = lines[0]["rulesets"].as_array().unwrap();
+    assert_eq!(rulesets.len(), 1);
+    assert_eq!(rulesets[0]["id"], "test_attack");
+}
+
+#[test]
+fn analyze_attaches_the_refs_of_the_selected_rulesets() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze_with_rulesets(&["--ruleset", "test_attack", "--emit-signals"]);
+
+    let signal = of_type(&lines, "signal")[0];
+    assert_eq!(
+        signal["refs"],
+        json!([{ "ruleset": "test_attack", "ids": ["T1078.004"] }]),
+        "{signal}"
+    );
+    let found = of_type(&lines, "scenario_match")[0];
+    assert!(found.get("refs").is_none(), "{found}");
+}
+
+#[test]
+fn analyze_omits_refs_for_rulesets_without_a_framework() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--emit-signals"]);
+
+    for line in test_records(&lines, "signal") {
+        assert!(line.get("refs").is_none(), "{line}");
+    }
+}
+
+#[test]
+fn analyze_runs_only_the_given_rules_of_the_ruleset() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze_with_rulesets(&[
+        "--ruleset",
+        "test_attack",
+        "--rule",
+        "test_console_login",
+        "--emit-signals",
+    ]);
+
+    assert_eq!(rule_ids(&lines), ["test_console_login"]);
+}
+
+#[test]
+fn analyze_runs_the_signals_of_a_given_scenario() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze_with_rulesets(&[
+        "--ruleset",
+        "test_attack",
+        "--rule",
+        "test_repeated_console_login",
+        "--emit-signals",
+    ]);
+
+    assert_eq!(
+        rule_ids(&lines),
+        ["test_console_login", "test_repeated_console_login"]
+    );
+}
+
+#[test]
+fn analyze_rejects_a_rule_outside_the_given_rulesets() {
+    let case = AnalyzeCase::new();
+
+    let stderr =
+        case.analyze_failure(&["--ruleset", "test_attack", "--rule", "cloudshell_activity"]);
+
+    assert!(stderr.contains("cloudshell_activity"), "stderr: {stderr}");
+}
+
+#[test]
+fn analyze_rejects_an_unknown_ruleset() {
+    let case = AnalyzeCase::new();
+
+    let stderr = case.analyze_failure(&["--ruleset", "missing"]);
+
+    assert!(stderr.contains("missing"), "stderr: {stderr}");
+}
+
+fn rulesets_command(args: &[&str]) -> std::process::Output {
+    ashiato().arg("rulesets").args(args).output().unwrap()
+}
+
+fn json_lines(output: &std::process::Output) -> Vec<serde_json::Value> {
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect()
+}
+
+#[test]
+fn rulesets_list_writes_each_ruleset() {
+    let dir = TempDir::new().unwrap();
+    write_rule(
+        &dir.path().join("rules"),
+        "test_console_login",
+        CONSOLE_LOGIN_RULE,
+    );
+    write_rule(
+        &dir.path().join("rules"),
+        "test_repeated_console_login",
+        REPEATED_CONSOLE_LOGIN_RULE,
+    );
+    let rulesets = write_ruleset(dir.path(), TEST_RULESET);
+
+    let lines = json_lines(&rulesets_command(&[
+        "list",
+        "--rules",
+        dir.path().join("rules").to_str().unwrap(),
+        "--rulesets",
+        rulesets.to_str().unwrap(),
+    ]));
+
+    let default = lines.iter().find(|line| line["id"] == "default").unwrap();
+    assert!(default["rules"].as_u64().unwrap() > 0, "{default}");
+    assert!(default.get("framework").is_none(), "{default}");
+    let attack = lines
+        .iter()
+        .find(|line| line["id"] == "test_attack")
+        .unwrap();
+    assert_eq!(attack["title"], "試験用の ATT&CK");
+    assert_eq!(attack["rules"], 2);
+    assert_eq!(
+        attack["framework"],
+        json!({ "kind": "mitre_attack", "version": "20.0" })
+    );
+}
+
+#[test]
+fn rulesets_show_writes_each_rule_of_the_ruleset() {
+    let dir = TempDir::new().unwrap();
+    write_rule(
+        &dir.path().join("rules"),
+        "test_console_login",
+        CONSOLE_LOGIN_RULE,
+    );
+    write_rule(
+        &dir.path().join("rules"),
+        "test_repeated_console_login",
+        REPEATED_CONSOLE_LOGIN_RULE,
+    );
+    let rulesets = write_ruleset(dir.path(), TEST_RULESET);
+
+    let lines = json_lines(&rulesets_command(&[
+        "show",
+        "test_attack",
+        "--rules",
+        dir.path().join("rules").to_str().unwrap(),
+        "--rulesets",
+        rulesets.to_str().unwrap(),
+    ]));
+
+    assert_eq!(
+        lines,
+        [
+            json!({
+                "id": "test_console_login",
+                "kind": "signal",
+                "severity": "low",
+                "tactics": ["TA0001"],
+                "refs": ["T1078.004"],
+            }),
+            json!({
+                "id": "test_repeated_console_login",
+                "kind": "scenario",
+                "severity": "medium",
+                "tactics": ["TA0001"],
+                "refs": [],
+            }),
+        ]
+    );
+}
+
+#[test]
+fn rulesets_show_writes_the_builtin_default_ruleset() {
+    let lines = json_lines(&rulesets_command(&["show", "default"]));
+
+    assert!(
+        lines
+            .iter()
+            .any(|line| line["id"] == "console_takeover_mining" && line["kind"] == "scenario"),
+        "{lines:#?}"
+    );
+}
+
+#[test]
+fn rulesets_show_rejects_an_unknown_ruleset() {
+    let output = rulesets_command(&["show", "missing"]);
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missing"));
+}
+
+#[test]
+fn rules_validate_rejects_a_ruleset_that_lists_an_unknown_rule() {
+    let dir = TempDir::new().unwrap();
+    let rulesets = write_ruleset(
+        dir.path(),
+        "id: broken\ntitle: broken\nrules:\n  - id: no_such_rule\n",
+    );
+
+    let output = ashiato()
+        .args(["rules", "validate", "--rulesets"])
+        .arg(&rulesets)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("no_such_rule"), "stderr: {stderr}");
+}
+
+#[test]
+fn rules_test_runs_only_the_fixtures_of_the_given_ruleset() {
+    let dir = TempDir::new().unwrap();
+    let rules = dir.path().join("rules");
+    write_rule(&rules, "test_console_login", CONSOLE_LOGIN_RULE);
+    write_rule(
+        &rules,
+        "test_repeated_console_login",
+        REPEATED_CONSOLE_LOGIN_RULE,
+    );
+    write_fixture(
+        &rules,
+        "test_console_login/fixtures/positive/login.json",
+        json!([console_login_record()]),
+    );
+    let rulesets = write_ruleset(dir.path(), TEST_RULESET);
+
+    let output = ashiato()
+        .args(["rules", "test", "--ruleset", "test_attack", "--rules"])
+        .arg(&rules)
+        .arg("--rulesets")
+        .arg(&rulesets)
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(output.status.success(), "stdout: {stdout}");
+    assert!(
+        stdout.contains("PASS test_console_login"),
+        "stdout: {stdout}"
+    );
+    assert!(
+        !stdout.contains("console_takeover_mining"),
+        "stdout: {stdout}"
     );
 }

@@ -1,5 +1,5 @@
 use ashiato_core::fixture::{Expectation, Fixture, FixtureFile, builtin_fixtures};
-use ashiato_core::rule::{RuleFile, RuleSet, Rules};
+use ashiato_core::rule::{RuleFile, RuleSource, Rules};
 use ashiato_duckdb::fixture::{Detections, FixtureReport, FixtureRunError, Verdict, run_fixture};
 use serde_json::{Value, json};
 
@@ -37,7 +37,7 @@ steps:
 "#;
 
 fn rules() -> Rules {
-    let set = RuleSet::parse(
+    let set = RuleSource::parse(
         "test",
         vec![
             RuleFile {
@@ -277,7 +277,7 @@ async fn fixture_of_an_undefined_rule_is_an_error() {
 
 #[tokio::test]
 async fn builtin_rule_fixtures_pass() {
-    let rules = Rules::new([RuleSet::builtin().unwrap()]).unwrap();
+    let rules = Rules::new([RuleSource::builtin().unwrap()]).unwrap();
     let mut failures = Vec::new();
     for fixture in builtin_fixtures().unwrap() {
         let report = run_fixture(&rules, &fixture)

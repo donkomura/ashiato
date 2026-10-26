@@ -4,7 +4,7 @@ use std::sync::Mutex;
 use ashiato_core::lineage::LineageEdge;
 use ashiato_core::macros::{Dialect, MacroError};
 use ashiato_core::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
-use ashiato_core::rule::{Rule, RuleFile, RuleSet, SignalRule};
+use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_core::{AnalysisWindow, SignalRow};
 use async_trait::async_trait;
 use chrono::TimeDelta;
@@ -66,7 +66,7 @@ fn signal_rule(sql: &str) -> SignalRule {
          params:\n  min_count: 3\n\
          sql: |\n{indented_sql}"
     );
-    let set = RuleSet::parse(
+    let set = RuleSource::parse(
         "test",
         vec![RuleFile {
             path: "test_signal/rule.yaml".to_owned(),

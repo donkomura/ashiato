@@ -6,7 +6,7 @@ use ashiato_core::SignalRow;
 use ashiato_core::macros::Dialect;
 use ashiato_core::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
 use ashiato_core::record::RecordBuilder;
-use ashiato_core::rule::{Rule, RuleFile, RuleSet, SignalRule};
+use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use chrono::{DateTime, TimeDelta, Utc};
 use flate2::Compression;
@@ -84,7 +84,7 @@ fn window() -> AnalysisWindow {
 }
 
 fn parse_signal_rule(content: &str) -> SignalRule {
-    let set = RuleSet::parse(
+    let set = RuleSource::parse(
         "test",
         vec![RuleFile {
             path: "rule.yaml".to_owned(),

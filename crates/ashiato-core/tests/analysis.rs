@@ -5,7 +5,7 @@ use ashiato_core::lineage::{Caller, LineageEdge, LineageStep, Origin, OriginKind
 use ashiato_core::macros::Dialect;
 use ashiato_core::output::{SignalEvidence, StepRecord};
 use ashiato_core::query::{BackendError, QueryBackend};
-use ashiato_core::rule::{RuleFile, RuleSet, Rules};
+use ashiato_core::rule::{RuleFile, RuleSource, Rules};
 use ashiato_core::{AnalysisWindow, Severity, SignalRow, Tactic};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -112,7 +112,7 @@ fn rules(files: &[(&str, &str)]) -> Rules {
             content: (*content).to_owned(),
         })
         .collect();
-    Rules::new([RuleSet::parse("test", files).unwrap()]).unwrap()
+    Rules::new([RuleSource::parse("test", files).unwrap()]).unwrap()
 }
 
 fn scenario_rules() -> Rules {

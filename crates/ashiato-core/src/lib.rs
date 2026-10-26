@@ -7,6 +7,7 @@ pub mod output;
 pub mod query;
 pub mod record;
 pub mod rule;
+pub mod ruleset;
 pub mod sequence;
 mod severity;
 mod signal;

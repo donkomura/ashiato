@@ -1,5 +1,5 @@
 use ashiato_core::macros::MacroError;
-use ashiato_core::rule::{RuleFile, RuleSet, Rules};
+use ashiato_core::rule::{RuleFile, RuleSource, Rules};
 use ashiato_core::validate::{ValidationError, function_calls, validate};
 
 fn signal(id: &str, sql: &str) -> RuleFile {
@@ -13,7 +13,7 @@ fn signal(id: &str, sql: &str) -> RuleFile {
 }
 
 fn rules(files: Vec<RuleFile>) -> Rules {
-    Rules::new([RuleSet::parse("test", files).unwrap()]).unwrap()
+    Rules::new([RuleSource::parse("test", files).unwrap()]).unwrap()
 }
 
 #[test]
@@ -80,7 +80,7 @@ fn function_calls_reads_calls_after_a_string_literal() {
 
 #[test]
 fn validate_accepts_the_builtin_rules() {
-    let builtin = Rules::new([RuleSet::builtin().unwrap()]).unwrap();
+    let builtin = Rules::new([RuleSource::builtin().unwrap()]).unwrap();
 
     assert_eq!(validate(&builtin), []);
 }
