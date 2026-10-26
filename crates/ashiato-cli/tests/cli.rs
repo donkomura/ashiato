@@ -297,17 +297,17 @@ fn analyze_writes_the_run_record_first() {
     assert_eq!(run["tool_version"], env!("CARGO_PKG_VERSION"));
     assert_eq!(run["since"], "2026-10-01T00:00:00Z");
     assert_eq!(run["until"], "2026-10-02T00:00:00Z");
-    let rulesets = run["rulesets"].as_array().unwrap();
-    assert_eq!(rulesets.len(), 2, "{run}");
-    assert_eq!(rulesets[0]["id"], "builtin");
+    let rule_sources = run["rule_sources"].as_array().unwrap();
+    assert_eq!(rule_sources.len(), 2, "{run}");
+    assert_eq!(rule_sources[0]["id"], "builtin");
     assert_eq!(
-        rulesets[1]["id"],
+        rule_sources[1]["id"],
         case.rules_dir().to_string_lossy().as_ref()
     );
-    for ruleset in rulesets {
+    for source in rule_sources {
         assert!(
-            ruleset["digest"].as_str().unwrap().starts_with("sha256:"),
-            "{ruleset}"
+            source["digest"].as_str().unwrap().starts_with("sha256:"),
+            "{source}"
         );
     }
     assert_eq!(of_type(&lines, "run").len(), 1);

@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::lineage::{LineageStep, Origin};
-use crate::rule::RuleSetDigest;
+use crate::rule::RuleSourceDigest;
 use crate::{Severity, SignalRow, Tactic};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -22,7 +22,7 @@ pub struct RunRecord {
     pub tool_version: String,
     pub since: DateTime<Utc>,
     pub until: DateTime<Utc>,
-    pub rulesets: Vec<RuleSetDigest>,
+    pub rule_sources: Vec<RuleSourceDigest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]

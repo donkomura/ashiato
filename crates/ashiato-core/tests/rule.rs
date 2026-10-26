@@ -1,5 +1,5 @@
 use ashiato_core::rule::{
-    DataRequirement, Rule, RuleError, RuleFile, RuleSet, Rules, ScenarioStep,
+    DataRequirement, Rule, RuleError, RuleFile, RuleSource, Rules, ScenarioStep,
 };
 use ashiato_core::{Duration, Severity, Tactic};
 use serde_json::json;
@@ -60,12 +60,12 @@ fn scenario(id: &str, steps: &str) -> String {
 }
 
 fn parse_one(content: &str) -> Result<Rule, RuleError> {
-    let set = RuleSet::parse("test", vec![file("rule.yaml", content)])?;
+    let set = RuleSource::parse("test", vec![file("rule.yaml", content)])?;
     Ok(set.rules()[0].clone())
 }
 
-fn rule_set(id: &str, files: &[(&str, &str)]) -> RuleSet {
-    RuleSet::parse(
+fn rule_source(id: &str, files: &[(&str, &str)]) -> RuleSource {
+    RuleSource::parse(
         id,
         files
             .iter()
@@ -227,8 +227,8 @@ fn unknown_kind_and_requirement_are_rejected() {
 }
 
 #[test]
-fn duplicate_id_in_one_rule_set_is_rejected() {
-    let error = RuleSet::parse(
+fn duplicate_id_in_one_rule_source_is_rejected() {
+    let error = RuleSource::parse(
         "builtin",
         vec![
             file("a/rule.yaml", &signal("same_id", &[])),
@@ -238,13 +238,13 @@ fn duplicate_id_in_one_rule_set_is_rejected() {
     .unwrap_err();
 
     assert!(
-        matches!(&error, RuleError::DuplicateId { id, ruleset } if id == "same_id" && ruleset == "builtin"),
+        matches!(&error, RuleError::DuplicateId { id, rule_source } if id == "same_id" && rule_source == "builtin"),
         "unexpected error: {error:?}"
     );
 }
 
 #[test]
-fn rules_built_from_valid_rule_set_contain_all_rules() {
+fn rules_built_from_valid_rule_source_contain_all_rules() {
     let mut files = s3_destruction_signals();
     files.push((
         "cross_account_s3_destruction/rule.yaml".to_owned(),
@@ -255,7 +255,7 @@ fn rules_built_from_valid_rule_set_contain_all_rules() {
         .map(|(path, content)| (path.as_str(), content.as_str()))
         .collect();
 
-    let rules = Rules::new([rule_set("builtin", &files)]).unwrap();
+    let rules = Rules::new([rule_source("builtin", &files)]).unwrap();
 
     assert_eq!(
         sorted_ids(&rules),
@@ -276,7 +276,7 @@ fn rules_built_from_valid_rule_set_contain_all_rules() {
 #[test]
 fn scenario_referring_to_missing_signal_is_rejected() {
     let missing = scenario("uses_missing", "  - signal: no_such_signal\n");
-    let set = rule_set("builtin", &[("uses_missing/rule.yaml", &missing)]);
+    let set = rule_source("builtin", &[("uses_missing/rule.yaml", &missing)]);
 
     let error = Rules::new([set]).unwrap_err();
 
@@ -290,7 +290,7 @@ fn scenario_referring_to_missing_signal_is_rejected() {
 fn scenario_referring_to_another_scenario_is_rejected() {
     let inner = scenario("inner", "  - signal: base\n");
     let outer = scenario("outer", "  - signal: inner\n");
-    let set = rule_set(
+    let set = rule_source(
         "builtin",
         &[
             ("base/rule.yaml", &signal("base", &[])),
@@ -322,7 +322,7 @@ fn attribute_used_by_same_or_distinct_by_must_be_declared() {
         ("uses_same", uses_same, "bucket"),
         ("uses_distinct_by", uses_distinct_by, "role_arn"),
     ] {
-        let set = rule_set(
+        let set = rule_source(
             "builtin",
             &[
                 ("base/rule.yaml", &signal("base", &["other"])),
@@ -345,14 +345,14 @@ fn attribute_used_by_same_or_distinct_by_must_be_declared() {
 
 #[test]
 fn custom_rule_replaces_builtin_rule_with_same_id_and_adds_new_ones() {
-    let builtin = rule_set(
+    let builtin = rule_source(
         "builtin",
         &[
             ("kept/rule.yaml", &signal("kept", &[])),
             ("replaced/rule.yaml", &signal("replaced", &[])),
         ],
     );
-    let custom = rule_set(
+    let custom = rule_source(
         "custom",
         &[
             ("replaced/rule.yaml", &signal("replaced", &["bucket"])),
@@ -371,7 +371,7 @@ fn custom_rule_replaces_builtin_rule_with_same_id_and_adds_new_ones() {
 
 #[test]
 fn references_are_checked_after_custom_rules_are_merged() {
-    let builtin = rule_set(
+    let builtin = rule_source(
         "builtin",
         &[
             ("base/rule.yaml", &signal("base", &["bucket"])),
@@ -381,7 +381,7 @@ fn references_are_checked_after_custom_rules_are_merged() {
             ),
         ],
     );
-    let custom = rule_set("custom", &[("base/rule.yaml", &signal("base", &[]))]);
+    let custom = rule_source("custom", &[("base/rule.yaml", &signal("base", &[]))]);
 
     let error = Rules::new([builtin, custom]).unwrap_err();
 
@@ -393,8 +393,8 @@ fn references_are_checked_after_custom_rules_are_merged() {
 
 #[test]
 fn custom_scenario_can_refer_to_builtin_signal() {
-    let builtin = rule_set("builtin", &[("base/rule.yaml", &signal("base", &[]))]);
-    let custom = rule_set(
+    let builtin = rule_source("builtin", &[("base/rule.yaml", &signal("base", &[]))]);
+    let custom = rule_source(
         "custom",
         &[(
             "uses_base/rule.yaml",
@@ -408,9 +408,9 @@ fn custom_scenario_can_refer_to_builtin_signal() {
 }
 
 #[test]
-fn rules_report_id_and_digest_of_each_rule_set() {
-    let builtin = rule_set("builtin", &[("a/rule.yaml", &signal("a", &[]))]);
-    let custom = rule_set("custom", &[("b/rule.yaml", &signal("b", &[]))]);
+fn rules_report_id_and_digest_of_each_rule_source() {
+    let builtin = rule_source("builtin", &[("a/rule.yaml", &signal("a", &[]))]);
+    let custom = rule_source("custom", &[("b/rule.yaml", &signal("b", &[]))]);
     let expected = [
         ("builtin".to_owned(), builtin.digest().to_owned()),
         ("custom".to_owned(), custom.digest().to_owned()),
@@ -419,7 +419,7 @@ fn rules_report_id_and_digest_of_each_rule_set() {
     let rules = Rules::new([builtin, custom]).unwrap();
 
     let reported: Vec<(String, String)> = rules
-        .rulesets()
+        .rule_sources()
         .iter()
         .map(|set| (set.id.clone(), set.digest.clone()))
         .collect();
@@ -428,7 +428,7 @@ fn rules_report_id_and_digest_of_each_rule_set() {
 
 #[test]
 fn digest_is_sha256_of_rule_files() {
-    let digest = rule_set("builtin", &[("a/rule.yaml", &signal("a", &[]))])
+    let digest = rule_source("builtin", &[("a/rule.yaml", &signal("a", &[]))])
         .digest()
         .to_owned();
 
@@ -445,17 +445,17 @@ fn digest_does_not_depend_on_file_order() {
     let a = ("a/rule.yaml", signal("a", &[]));
     let b = ("b/rule.yaml", signal("b", &[]));
 
-    let forward = rule_set("builtin", &[(a.0, &a.1), (b.0, &b.1)]);
-    let backward = rule_set("builtin", &[(b.0, &b.1), (a.0, &a.1)]);
+    let forward = rule_source("builtin", &[(a.0, &a.1), (b.0, &b.1)]);
+    let backward = rule_source("builtin", &[(b.0, &b.1), (a.0, &a.1)]);
 
     assert_eq!(forward.digest(), backward.digest());
 }
 
 #[test]
 fn digest_changes_when_rule_content_or_path_changes() {
-    let original = rule_set("builtin", &[("a/rule.yaml", &signal("a", &[]))]);
-    let edited = rule_set("builtin", &[("a/rule.yaml", &signal("a", &["bucket"]))]);
-    let moved = rule_set("builtin", &[("moved/rule.yaml", &signal("a", &[]))]);
+    let original = rule_source("builtin", &[("a/rule.yaml", &signal("a", &[]))]);
+    let edited = rule_source("builtin", &[("a/rule.yaml", &signal("a", &["bucket"]))]);
+    let moved = rule_source("builtin", &[("moved/rule.yaml", &signal("a", &[]))]);
 
     assert_ne!(original.digest(), edited.digest());
     assert_ne!(original.digest(), moved.digest());
@@ -463,7 +463,7 @@ fn digest_changes_when_rule_content_or_path_changes() {
 
 #[test]
 fn builtin_rules_are_loaded_and_valid() {
-    let builtin = RuleSet::builtin().unwrap();
+    let builtin = RuleSource::builtin().unwrap();
 
     assert_eq!(builtin.id(), "builtin");
     Rules::new([builtin]).unwrap();

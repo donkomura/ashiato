@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
 use ashiato_core::SignalRow;
-use ashiato_core::rule::{Rule, RuleFile, RuleSet, ScenarioRule};
+use ashiato_core::rule::{Rule, RuleFile, RuleSource, ScenarioRule};
 use ashiato_core::sequence::{ObservedSignal, ScenarioMatch, match_scenario};
 use chrono::{DateTime, TimeDelta, Utc};
 
@@ -16,7 +16,7 @@ fn scenario(window: &str, steps: &str) -> ScenarioRule {
          window: {window}\n\
          steps:\n{steps}"
     );
-    let set = RuleSet::parse(
+    let set = RuleSource::parse(
         "test",
         vec![RuleFile {
             path: "test_scenario/rule.yaml".to_owned(),

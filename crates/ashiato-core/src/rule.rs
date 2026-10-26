@@ -8,7 +8,7 @@ use crate::{Duration, Severity, Tactic};
 
 pub(crate) static BUILTIN_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../rules");
 
-const BUILTIN_RULE_SET_ID: &str = "builtin";
+const BUILTIN_RULE_SOURCE_ID: &str = "builtin";
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -89,8 +89,8 @@ pub enum RuleError {
         #[source]
         source: serde_yaml::Error,
     },
-    #[error("rule id {id} is defined more than once in rule set {ruleset}")]
-    DuplicateId { id: String, ruleset: String },
+    #[error("rule id {id} is defined more than once in rule source {rule_source}")]
+    DuplicateId { id: String, rule_source: String },
     #[error("scenario {scenario} refers to {signal}, which is not a signal rule")]
     UnknownSignal { scenario: String, signal: String },
     #[error("scenario {scenario} uses attribute {attr}, which signal {signal} does not declare")]
@@ -108,13 +108,13 @@ pub struct RuleFile {
 }
 
 #[derive(Debug, Clone)]
-pub struct RuleSet {
+pub struct RuleSource {
     id: String,
     digest: String,
     rules: Vec<Rule>,
 }
 
-impl RuleSet {
+impl RuleSource {
     pub fn parse(id: impl Into<String>, mut files: Vec<RuleFile>) -> Result<Self, RuleError> {
         let id = id.into();
         files.sort_by(|a, b| a.path.cmp(&b.path));
@@ -128,7 +128,7 @@ impl RuleSet {
             if rules.iter().any(|existing| existing.id() == rule.id()) {
                 return Err(RuleError::DuplicateId {
                     id: rule.id().to_owned(),
-                    ruleset: id,
+                    rule_source: id,
                 });
             }
             rules.push(rule);
@@ -143,7 +143,7 @@ impl RuleSet {
     pub fn builtin() -> Result<Self, RuleError> {
         let mut files = Vec::new();
         collect_builtin_rule_files(&BUILTIN_RULES, &mut files);
-        Self::parse(BUILTIN_RULE_SET_ID, files)
+        Self::parse(BUILTIN_RULE_SOURCE_ID, files)
     }
 
     pub fn id(&self) -> &str {
@@ -160,7 +160,7 @@ impl RuleSet {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct RuleSetDigest {
+pub struct RuleSourceDigest {
     pub id: String,
     pub digest: String,
 }
@@ -168,15 +168,15 @@ pub struct RuleSetDigest {
 #[derive(Debug, Clone)]
 pub struct Rules {
     rules: BTreeMap<String, Rule>,
-    rulesets: Vec<RuleSetDigest>,
+    rule_sources: Vec<RuleSourceDigest>,
 }
 
 impl Rules {
-    pub fn new(sets: impl IntoIterator<Item = RuleSet>) -> Result<Self, RuleError> {
+    pub fn new(sets: impl IntoIterator<Item = RuleSource>) -> Result<Self, RuleError> {
         let mut rules = BTreeMap::new();
-        let mut rulesets = Vec::new();
+        let mut rule_sources = Vec::new();
         for set in sets {
-            rulesets.push(RuleSetDigest {
+            rule_sources.push(RuleSourceDigest {
                 id: set.id,
                 digest: set.digest,
             });
@@ -184,7 +184,10 @@ impl Rules {
                 rules.insert(rule.id().to_owned(), rule);
             }
         }
-        let rules = Self { rules, rulesets };
+        let rules = Self {
+            rules,
+            rule_sources,
+        };
         rules.check_scenario_references()?;
         Ok(rules)
     }
@@ -224,8 +227,8 @@ impl Rules {
         self.rules.values()
     }
 
-    pub fn rulesets(&self) -> &[RuleSetDigest] {
-        &self.rulesets
+    pub fn rule_sources(&self) -> &[RuleSourceDigest] {
+        &self.rule_sources
     }
 }
 

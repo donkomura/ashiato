@@ -202,7 +202,7 @@ fn scenario_rules(rules: &Rules) -> impl Iterator<Item = &ScenarioRule> {
 
 fn signal_record(rules: &Rules, origin: &Origin, signal: ObservedSignal) -> SignalRecord {
     let Some(Rule::Signal(rule)) = rules.get(&signal.signal_id) else {
-        unreachable!("observed signals are produced by the signal rules of the same rule set")
+        unreachable!("observed signals are produced by the signal rules of the same rule sources")
     };
     SignalRecord {
         signal_id: signal.signal_id,

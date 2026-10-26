@@ -5,7 +5,7 @@ use std::io::Write;
 use ashiato_core::AnalysisWindow;
 use ashiato_core::query::query_signal_rule;
 use ashiato_core::record::RecordBuilder;
-use ashiato_core::rule::{Rule, RuleFile, RuleSet, SignalRule};
+use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use chrono::TimeDelta;
 use flate2::Compression;
@@ -68,7 +68,7 @@ fn rule(sql: &str) -> SignalRule {
         "kind: signal\nid: baseline_probe\ntitle: test\nseverity: low\n\
          tactics: [TA0007]\nattrs: [dim, value]\nsql: |\n{indented}"
     );
-    let set = RuleSet::parse(
+    let set = RuleSource::parse(
         "test",
         vec![RuleFile {
             path: "baseline_probe/rule.yaml".to_owned(),

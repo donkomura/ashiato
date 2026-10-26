@@ -9,7 +9,7 @@ use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
 use ashiato_core::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
-use ashiato_core::rule::{RuleFile, RuleSet, Rules};
+use ashiato_core::rule::{RuleFile, RuleSource, Rules};
 use ashiato_core::validate::validate;
 use ashiato_core::{AnalysisWindow, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
@@ -173,7 +173,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         args.until,
         TimeDelta::days(BASELINE_LOOKBACK_DAYS),
     )?;
-    let rules = Rules::new(rule_sets(args.rules.as_deref())?)?;
+    let rules = Rules::new(rule_sources(args.rules.as_deref())?)?;
     let backend = DuckDbBackend::open(&database)?;
     let mut analysis = tokio::runtime::Builder::new_current_thread()
         .build()?
@@ -190,7 +190,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         tool_version: env!("CARGO_PKG_VERSION").to_owned(),
         since: window.since(),
         until: window.until(),
-        rulesets: rules.rulesets().to_vec(),
+        rule_sources: rules.rule_sources().to_vec(),
     }))?;
     if args.summary {
         for summary in analysis.summarize() {
@@ -211,7 +211,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
 }
 
 fn validate_rules(args: &RulesArgs) -> anyhow::Result<()> {
-    let rules = Rules::new(rule_sets(args.rules.as_deref())?)?;
+    let rules = Rules::new(rule_sources(args.rules.as_deref())?)?;
     let errors = validate(&rules);
     for error in &errors {
         eprintln!("error: {error}");
@@ -224,10 +224,10 @@ fn validate_rules(args: &RulesArgs) -> anyhow::Result<()> {
 }
 
 fn test_rules(args: &RulesArgs) -> anyhow::Result<()> {
-    let sets = rule_sets(args.rules.as_deref())?;
+    let sets = rule_sources(args.rules.as_deref())?;
     let overridden: BTreeSet<String> = sets[1..]
         .iter()
-        .flat_map(RuleSet::rules)
+        .flat_map(RuleSource::rules)
         .map(|rule| rule.id().to_owned())
         .collect();
     let rules = Rules::new(sets)?;
@@ -257,10 +257,10 @@ fn test_rules(args: &RulesArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn rule_sets(dir: Option<&Path>) -> anyhow::Result<Vec<RuleSet>> {
-    let mut sets = vec![RuleSet::builtin()?];
+fn rule_sources(dir: Option<&Path>) -> anyhow::Result<Vec<RuleSource>> {
+    let mut sets = vec![RuleSource::builtin()?];
     if let Some(dir) = dir {
-        sets.push(load_rule_set(dir)?);
+        sets.push(load_rule_source(dir)?);
     }
     Ok(sets)
 }
@@ -293,12 +293,12 @@ fn report_warning(warning: &LineageWarning) {
     }
 }
 
-fn load_rule_set(dir: &Path) -> anyhow::Result<RuleSet> {
+fn load_rule_source(dir: &Path) -> anyhow::Result<RuleSource> {
     let files = read_files(dir, RULE_EXTENSION)?
         .into_iter()
         .map(|(path, content)| RuleFile { path, content })
         .collect();
-    Ok(RuleSet::parse(dir.to_string_lossy(), files)?)
+    Ok(RuleSource::parse(dir.to_string_lossy(), files)?)
 }
 
 fn read_files(root: &Path, extension: &str) -> anyhow::Result<Vec<(String, String)>> {

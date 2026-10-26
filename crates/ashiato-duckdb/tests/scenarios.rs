@@ -4,7 +4,7 @@ use std::io::Write;
 use ashiato_core::analysis::{Analysis, analyze};
 use ashiato_core::fixture::{builtin_fixtures, fixture_window};
 use ashiato_core::lineage::{Origin, OriginKind};
-use ashiato_core::rule::{RuleSet, Rules};
+use ashiato_core::rule::{RuleSource, Rules};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use flate2::Compression;
 use flate2::write::GzEncoder;
@@ -37,7 +37,7 @@ async fn analyze_builtin_fixture(path: &str) -> Analysis {
         .unwrap();
 
     let backend = DuckDbBackend::open(&database).unwrap();
-    let rules = Rules::new([RuleSet::builtin().unwrap()]).unwrap();
+    let rules = Rules::new([RuleSource::builtin().unwrap()]).unwrap();
     analyze(&backend, &rules, &fixture_window()).await.unwrap()
 }
 
