@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fs;
 use std::io::{self, BufWriter, Write};
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
@@ -19,6 +20,7 @@ const DATABASE_FILE: &str = "ashiato.duckdb";
 const RULE_EXTENSION: &str = "yaml";
 const FIXTURE_EXTENSION: &str = "json";
 const BASELINE_LOOKBACK_DAYS: i64 = 30;
+const DEFAULT_INGEST_JOBS: NonZeroUsize = NonZeroUsize::new(4).unwrap();
 
 #[derive(Parser)]
 #[command(name = "ashiato", version)]
@@ -34,6 +36,8 @@ enum Command {
         workspace: PathBuf,
         #[arg(long)]
         source: String,
+        #[arg(long, default_value_t = DEFAULT_INGEST_JOBS)]
+        jobs: NonZeroUsize,
     },
     Analyze(AnalyzeArgs),
     Rules {
@@ -70,7 +74,11 @@ struct AnalyzeArgs {
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
-        Command::Ingest { workspace, source } => ingest(&workspace, &source),
+        Command::Ingest {
+            workspace,
+            source,
+            jobs,
+        } => ingest(&workspace, &source, jobs),
         Command::Analyze(args) => analyze(&args),
         Command::Rules {
             command: RulesCommand::Validate(args),
@@ -81,14 +89,14 @@ fn main() -> anyhow::Result<()> {
     }
 }
 
-fn ingest(workspace: &Path, source: &str) -> anyhow::Result<()> {
+fn ingest(workspace: &Path, source: &str, jobs: NonZeroUsize) -> anyhow::Result<()> {
     if source.starts_with("s3://") {
         bail!("S3 sources are not supported yet: {source}");
     }
     fs::create_dir_all(workspace)
         .with_context(|| format!("failed to create workspace {}", workspace.display()))?;
     let store = EventStore::open(&workspace.join(DATABASE_FILE))?;
-    let summary = store.ingest_directory(Path::new(source))?;
+    let summary = store.ingest_directory_with_jobs(Path::new(source), jobs)?;
     eprintln!(
         "ingested {} files ({} skipped as already ingested), {} events",
         summary.files, summary.skipped_files, summary.events
