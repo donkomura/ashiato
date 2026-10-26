@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use include_dir::{Dir, include_dir};
 use serde::{Deserialize, Serialize};
@@ -142,7 +142,7 @@ impl RuleSource {
 
     pub fn builtin() -> Result<Self, RuleError> {
         let mut files = Vec::new();
-        collect_builtin_rule_files(&BUILTIN_RULES, &mut files);
+        collect_yaml_files(&BUILTIN_RULES, &mut files);
         Self::parse(BUILTIN_RULE_SOURCE_ID, files)
     }
 
@@ -230,9 +230,21 @@ impl Rules {
     pub fn rule_sources(&self) -> &[RuleSourceDigest] {
         &self.rule_sources
     }
+
+    pub(crate) fn subset(&self, ids: &BTreeSet<String>) -> Self {
+        Self {
+            rules: self
+                .rules
+                .iter()
+                .filter(|(id, _)| ids.contains(*id))
+                .map(|(id, rule)| (id.clone(), rule.clone()))
+                .collect(),
+            rule_sources: self.rule_sources.clone(),
+        }
+    }
 }
 
-fn collect_builtin_rule_files(dir: &Dir<'_>, files: &mut Vec<RuleFile>) {
+pub(crate) fn collect_yaml_files(dir: &Dir<'_>, files: &mut Vec<RuleFile>) {
     for file in dir.files() {
         let path = file.path().to_string_lossy();
         if !path.ends_with(".yaml") {
@@ -246,11 +258,11 @@ fn collect_builtin_rule_files(dir: &Dir<'_>, files: &mut Vec<RuleFile>) {
         }
     }
     for child in dir.dirs() {
-        collect_builtin_rule_files(child, files);
+        collect_yaml_files(child, files);
     }
 }
 
-fn digest(sorted_files: &[RuleFile]) -> String {
+pub(crate) fn digest(sorted_files: &[RuleFile]) -> String {
     let mut hasher = Sha256::new();
     for file in sorted_files {
         for part in [&file.path, &file.content] {
