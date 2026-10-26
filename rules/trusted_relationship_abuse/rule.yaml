@@ -1,0 +1,10 @@
+kind: scenario
+id: trusted_relationship_abuse
+title: 別のアカウントから引き受けたロールで IAM の認証情報を作る
+severity: high
+tactics: [TA0001, TA0003]
+window: 1h
+steps:
+  - signal: cross_account_assume_role
+  - signal: iam_persistence
+    max_gap: 15m

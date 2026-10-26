@@ -472,7 +472,11 @@ fn analyze_writes_only_the_listed_severities() {
 
     assert_eq!(test_records(&low, "signal").len(), 2, "{low:#?}");
     assert!(test_records(&low, "scenario_match").is_empty(), "{low:#?}");
-    for line in low.iter().skip(1) {
+    for line in low
+        .iter()
+        .skip(1)
+        .filter(|line| line["type"] != "rule_skipped")
+    {
         assert_eq!(line["severity"], "low", "{line}");
     }
     assert!(
@@ -484,7 +488,11 @@ fn analyze_writes_only_the_listed_severities() {
         1,
         "{medium_and_high:#?}"
     );
-    for line in medium_and_high.iter().skip(1) {
+    for line in medium_and_high
+        .iter()
+        .skip(1)
+        .filter(|line| line["type"] != "rule_skipped")
+    {
         assert!(
             ["medium", "high"].contains(&line["severity"].as_str().unwrap()),
             "{line}"

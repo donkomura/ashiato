@@ -1,0 +1,40 @@
+kind: signal
+id: s3_object_read_or_copy
+title: S3 のオブジェクトの読み取りやコピー
+severity: medium
+tactics: [TA0010]
+requires: [s3_data_events]
+params:
+  bin: 10m
+attrs: [bucket]
+sql: |
+  WITH reads AS (
+    SELECT
+      *,
+      CASE
+        WHEN event_name = 'GetObject'
+          THEN {{ json(request_parameters, '$.bucketName') }}
+        WHEN starts_with({{ json(request_parameters, '$."x-amz-copy-source"') }}, '/')
+          THEN split_part({{ json(request_parameters, '$."x-amz-copy-source"') }}, '/', 2)
+        ELSE split_part({{ json(request_parameters, '$."x-amz-copy-source"') }}, '/', 1)
+      END AS source_bucket
+    FROM events
+    WHERE {{ in_analysis_window(event_time) }}
+      AND error_code IS NULL
+      AND event_source = 's3.amazonaws.com'
+      AND event_category = 'Data'
+      AND event_name IN ('GetObject', 'CopyObject')
+  )
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    aws_region               AS region,
+    source_bucket            AS attr_bucket
+  FROM reads
+  GROUP BY access_key_id, principal_key, recipient_account_id, aws_region, source_bucket,
+           {{ time_bin(event_time, param('bin')) }}

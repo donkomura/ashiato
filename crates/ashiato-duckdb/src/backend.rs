@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use ashiato_core::lineage::{Caller, Federation, LineageEdge};
 use ashiato_core::macros::Dialect;
-use ashiato_core::query::{BackendError, QueryBackend};
+use ashiato_core::query::{BackendError, DataAvailability, QueryBackend};
 use ashiato_core::{AnalysisWindow, SignalRow};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -13,6 +13,7 @@ use duckdb::types::Value;
 
 const ATTR_PREFIX: &str = "attr_";
 const LINEAGE_EDGES_SQL: &str = include_str!("../sql/lineage_edges.sql");
+const DATA_AVAILABILITY_SQL: &str = include_str!("../sql/data_availability.sql");
 
 pub struct DuckDbBackend {
     connection: Arc<Mutex<duckdb::Connection>>,
@@ -49,6 +50,21 @@ impl QueryBackend for DuckDbBackend {
         .map_err(|error| BackendError::Query(Box::new(error)))?
     }
 
+    async fn data_availability(
+        &self,
+        window: &AnalysisWindow,
+    ) -> Result<DataAvailability, BackendError> {
+        let connection = Arc::clone(&self.connection);
+        let since = sql_timestamp(window.since());
+        let until = sql_timestamp(window.until());
+        tokio::task::spawn_blocking(move || {
+            let connection = connection.lock().unwrap_or_else(PoisonError::into_inner);
+            query_data_availability(&connection, &since, &until)
+        })
+        .await
+        .map_err(|error| BackendError::Query(Box::new(error)))?
+    }
+
     async fn query_lineage(
         &self,
         window: &AnalysisWindow,
@@ -80,6 +96,21 @@ fn query_signals(
         signals.push(columns.read(row)?);
     }
     Ok(signals)
+}
+
+fn query_data_availability(
+    connection: &duckdb::Connection,
+    since: &str,
+    until: &str,
+) -> Result<DataAvailability, BackendError> {
+    connection
+        .query_row(DATA_AVAILABILITY_SQL, [since, until], |row| {
+            Ok(DataAvailability {
+                events: row.get(0)?,
+                s3_data_events: row.get(1)?,
+            })
+        })
+        .map_err(query_error)
 }
 
 // Sessions used in the analysis period may have been issued during the baseline period,

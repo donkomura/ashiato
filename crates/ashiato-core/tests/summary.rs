@@ -6,6 +6,7 @@ use ashiato_core::lineage::{Origin, OriginKind};
 use ashiato_core::output::{
     RecordKind, ScenarioMatchRecord, SignalEvidence, SignalRecord, StepRecord,
 };
+use ashiato_core::query::DataAvailability;
 
 fn origin(name: &str) -> Origin {
     Origin {
@@ -118,6 +119,8 @@ fn analysis() -> Analysis {
             ),
         ],
         warnings: Vec::new(),
+        data: DataAvailability::default(),
+        skipped: Vec::new(),
     }
 }
 

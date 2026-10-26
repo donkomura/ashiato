@@ -1,0 +1,30 @@
+kind: signal
+id: s3_delete_burst
+title: 短時間に集中した S3 オブジェクトの削除
+severity: high
+tactics: [TA0040]
+requires: [s3_data_events]
+params:
+  min_deletes: 3
+  bin: 5m
+attrs: [bucket]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    aws_region               AS region,
+    {{ json(request_parameters, '$.bucketName') }} AS attr_bucket
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 's3.amazonaws.com'
+    AND event_name IN ('DeleteObject', 'DeleteObjects')
+    AND error_code IS NULL
+  GROUP BY access_key_id, principal_key, recipient_account_id, aws_region,
+           {{ json(request_parameters, '$.bucketName') }},
+           {{ time_bin(event_time, param('bin')) }}
+  HAVING count(*) >= {{ param('min_deletes') }}

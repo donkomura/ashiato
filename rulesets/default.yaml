@@ -15,6 +15,8 @@ rules:
   - id: console_login_brute_force
   - id: console_login_without_mfa
   - id: console_takeover_mining
+  - id: cross_account_assume_role
+  - id: cross_account_s3_destruction
   - id: first_seen_account_region_write
   - id: first_seen_identity_probe
   - id: iam_persistence
@@ -31,8 +33,11 @@ rules:
   - id: role_session_outlier
   - id: root_credential_usage
   - id: s3_block_public_access_disabled
+  - id: s3_bucket_enumeration
   - id: s3_bucket_permission_change_denied
   - id: s3_bucket_public_access_granted
+  - id: s3_delete_burst
+  - id: s3_object_read_or_copy
   - id: security_monitoring_disabled
   - id: self_privilege_escalation
   - id: snapshot_shared_externally

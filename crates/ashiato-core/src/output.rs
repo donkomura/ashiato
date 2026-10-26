@@ -5,7 +5,8 @@ use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::lineage::{LineageStep, Origin};
-use crate::rule::RuleSourceDigest;
+use crate::query::DataAvailability;
+use crate::rule::{DataRequirement, RuleSourceDigest};
 use crate::ruleset::{RuleRefs, RulesetDigest};
 use crate::{Severity, SignalRow, Tactic};
 
@@ -13,6 +14,7 @@ use crate::{Severity, SignalRow, Tactic};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OutputRecord {
     Run(RunRecord),
+    RuleSkipped(RuleSkippedRecord),
     Signal(SignalRecord),
     ScenarioMatch(ScenarioMatchRecord),
     Summary(SummaryRecord),
@@ -25,6 +27,20 @@ pub struct RunRecord {
     pub until: DateTime<Utc>,
     pub rule_sources: Vec<RuleSourceDigest>,
     pub rulesets: Vec<RulesetDigest>,
+    pub data: DataAvailability,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct RuleSkippedRecord {
+    pub rule_id: String,
+    pub reason: SkipReason,
+    pub requires: Vec<DataRequirement>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SkipReason {
+    MissingData,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
