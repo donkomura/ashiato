@@ -1,0 +1,35 @@
+kind: signal
+id: serverless_function_change
+title: 主体がベースライン期間に使っていない、Lambda 関数の作成、コードや設定の更新、呼び出し権限の追加
+severity: medium
+tactics: [TA0002, TA0003]
+attrs: [action, function_name]
+sql: |
+  SELECT
+    e.event_time           AS start_time,
+    e.event_time           AS end_time,
+    [e.event_id]           AS event_ids,
+    e.access_key_id,
+    e.principal_key,
+    e.source_ip,
+    e.recipient_account_id AS account_id,
+    e.aws_region           AS region,
+    e.event_name           AS attr_action,
+    {{ json(e.request_parameters, '$.functionName') }} AS attr_function_name
+  FROM events e
+  WHERE {{ in_analysis_window(e.event_time) }}
+    AND e.error_code IS NULL
+    AND e.event_source = 'lambda.amazonaws.com'
+    AND e.event_name IN (
+      'CreateFunction20150331',
+      'UpdateFunctionCode20150331v2',
+      'UpdateFunctionConfiguration20150331v2',
+      'AddPermission20150331v2'
+    )
+    AND e.principal_key IN (SELECT principal_key FROM baseline_principals)
+    AND NOT EXISTS (
+      SELECT 1 FROM baseline b
+      WHERE b.principal_key = e.principal_key
+        AND b.dim = 'event_name'
+        AND b.value = e.event_name
+    )
