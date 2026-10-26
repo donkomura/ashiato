@@ -1,0 +1,129 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000000"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "eventTime": "2026-10-01T11:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000001"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "eventTime": "2026-10-01T12:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000002"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "eventTime": "2026-10-01T13:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000003"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "eventTime": "2026-10-01T14:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "TerminateInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "instancesSet": {
+          "items": [
+            {
+              "instanceId": "i-00000000000000004"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
