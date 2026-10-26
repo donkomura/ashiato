@@ -1,0 +1,48 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-09-15T09:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "DescribeInstances",
+      "awsRegion": "us-east-1",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "ec2-instance-connect.amazonaws.com",
+      "eventName": "SendSSHPublicKey",
+      "awsRegion": "us-east-1",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws",
+      "requestParameters": {
+        "instanceId": "i-0123456789abcdef0",
+        "osUser": "ec2-user",
+        "SSHKey": {
+          "publicKey": "ssh-ed25519 AAAAEXAMPLE"
+        }
+      },
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}
