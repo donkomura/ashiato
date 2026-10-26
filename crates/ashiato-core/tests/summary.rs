@@ -35,6 +35,7 @@ fn signal(id: &str, severity: Severity, owner: &str, evidence: SignalEvidence) -
         account_id: "111111111111".to_owned(),
         region: "us-east-1".to_owned(),
         evidence,
+        refs: Vec::new(),
     }
 }
 
@@ -58,6 +59,7 @@ fn scenario_match(
             })
             .collect(),
         lineage: Vec::new(),
+        refs: Vec::new(),
     }
 }
 

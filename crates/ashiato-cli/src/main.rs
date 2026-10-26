@@ -9,7 +9,8 @@ use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
 use ashiato_core::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
-use ashiato_core::rule::{RuleFile, RuleSource, Rules};
+use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules};
+use ashiato_core::ruleset::{RulesetError, Rulesets};
 use ashiato_core::validate::validate;
 use ashiato_core::{AnalysisWindow, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
@@ -40,6 +41,10 @@ enum Command {
         #[command(subcommand)]
         command: RulesCommand,
     },
+    Rulesets {
+        #[command(subcommand)]
+        command: RulesetsCommand,
+    },
 }
 
 #[derive(Subcommand)]
@@ -48,10 +53,33 @@ enum RulesCommand {
     Test(RulesArgs),
 }
 
+#[derive(Subcommand)]
+enum RulesetsCommand {
+    List(CatalogArgs),
+    Show(ShowRulesetArgs),
+}
+
 #[derive(clap::Args)]
-struct RulesArgs {
+struct CatalogArgs {
     #[arg(long)]
     rules: Option<PathBuf>,
+    #[arg(long)]
+    rulesets: Option<PathBuf>,
+}
+
+#[derive(clap::Args)]
+struct RulesArgs {
+    #[command(flatten)]
+    catalog: CatalogArgs,
+    #[arg(long, value_delimiter = ',')]
+    ruleset: Vec<String>,
+}
+
+#[derive(clap::Args)]
+struct ShowRulesetArgs {
+    id: String,
+    #[command(flatten)]
+    catalog: CatalogArgs,
 }
 
 #[derive(clap::Args)]
@@ -80,8 +108,12 @@ struct AnalyzeArgs {
     since: DateTime<Utc>,
     #[arg(long, value_parser = parse_time)]
     until: DateTime<Utc>,
-    #[arg(long)]
-    rules: Option<PathBuf>,
+    #[command(flatten)]
+    catalog: CatalogArgs,
+    #[arg(long, value_delimiter = ',')]
+    ruleset: Vec<String>,
+    #[arg(long, value_delimiter = ',')]
+    rule: Vec<String>,
     #[arg(long)]
     emit_signals: bool,
     #[arg(long, value_delimiter = ',')]
@@ -100,6 +132,12 @@ fn main() -> anyhow::Result<()> {
         Command::Rules {
             command: RulesCommand::Test(args),
         } => test_rules(&args),
+        Command::Rulesets {
+            command: RulesetsCommand::List(args),
+        } => list_rulesets(&args),
+        Command::Rulesets {
+            command: RulesetsCommand::Show(args),
+        } => show_ruleset(&args),
     }
 }
 
@@ -173,11 +211,19 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         args.until,
         TimeDelta::days(BASELINE_LOOKBACK_DAYS),
     )?;
-    let rules = Rules::new(rule_sources(args.rules.as_deref())?)?;
+    let catalog = load_catalog(&args.catalog)?;
+    let selection = catalog
+        .rulesets
+        .select(&catalog.rules, &args.ruleset, &args.rule)?;
     let backend = DuckDbBackend::open(&database)?;
     let mut analysis = tokio::runtime::Builder::new_current_thread()
         .build()?
-        .block_on(ashiato_core::analysis::analyze(&backend, &rules, &window))?;
+        .block_on(ashiato_core::analysis::analyze(
+            &backend,
+            &selection.rules,
+            &window,
+        ))?;
+    analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {
         report_warning(warning);
     }
@@ -190,7 +236,8 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         tool_version: env!("CARGO_PKG_VERSION").to_owned(),
         since: window.since(),
         until: window.until(),
-        rule_sources: rules.rule_sources().to_vec(),
+        rule_sources: selection.rules.rule_sources().to_vec(),
+        rulesets: selection.rulesets,
     }))?;
     if args.summary {
         for summary in analysis.summarize() {
@@ -211,7 +258,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
 }
 
 fn validate_rules(args: &RulesArgs) -> anyhow::Result<()> {
-    let rules = Rules::new(rule_sources(args.rules.as_deref())?)?;
+    let Catalog { rules, .. } = load_catalog(&args.catalog)?;
     let errors = validate(&rules);
     for error in &errors {
         eprintln!("error: {error}");
@@ -224,21 +271,23 @@ fn validate_rules(args: &RulesArgs) -> anyhow::Result<()> {
 }
 
 fn test_rules(args: &RulesArgs) -> anyhow::Result<()> {
-    let sets = rule_sources(args.rules.as_deref())?;
-    let overridden: BTreeSet<String> = sets[1..]
-        .iter()
-        .flat_map(RuleSource::rules)
-        .map(|rule| rule.id().to_owned())
-        .collect();
-    let rules = Rules::new(sets)?;
+    let Catalog {
+        rules,
+        rulesets,
+        custom_rule_ids,
+    } = load_catalog(&args.catalog)?;
     let mut fixtures: Vec<Fixture> = builtin_fixtures()?
         .into_iter()
-        .filter(|fixture| !overridden.contains(&fixture.rule_id))
+        .filter(|fixture| !custom_rule_ids.contains(&fixture.rule_id))
         .collect();
-    if let Some(dir) = &args.rules {
+    if let Some(dir) = &args.catalog.rules {
         for (path, content) in read_files(dir, FIXTURE_EXTENSION)? {
             fixtures.push(Fixture::parse(&FixtureFile { path, content })?);
         }
+    }
+    if !args.ruleset.is_empty() {
+        let selection = rulesets.select(&rules, &args.ruleset, &[])?;
+        fixtures.retain(|fixture| selection.rules.get(&fixture.rule_id).is_some());
     }
 
     let runtime = tokio::runtime::Builder::new_current_thread().build()?;
@@ -255,6 +304,95 @@ fn test_rules(args: &RulesArgs) -> anyhow::Result<()> {
     }
     eprintln!("{} fixtures passed", fixtures.len());
     Ok(())
+}
+
+fn list_rulesets(args: &CatalogArgs) -> anyhow::Result<()> {
+    let Catalog { rulesets, .. } = load_catalog(args)?;
+    let mut out = BufWriter::new(io::stdout().lock());
+    for set in rulesets.iter() {
+        let mut line = serde_json::json!({
+            "id": set.id,
+            "title": set.title,
+            "rules": set.rules.len(),
+        });
+        if let Some(framework) = &set.framework {
+            line["framework"] = serde_json::to_value(framework)?;
+        }
+        writeln!(out, "{line}")?;
+    }
+    out.flush()?;
+    Ok(())
+}
+
+fn show_ruleset(args: &ShowRulesetArgs) -> anyhow::Result<()> {
+    let Catalog {
+        rules, rulesets, ..
+    } = load_catalog(&args.catalog)?;
+    let set = rulesets
+        .get(&args.id)
+        .ok_or_else(|| RulesetError::UnknownRuleset {
+            ruleset: args.id.clone(),
+        })?;
+    let mut out = BufWriter::new(io::stdout().lock());
+    for entry in &set.rules {
+        let rule = rules
+            .get(&entry.id)
+            .expect("load_catalog checks that every listed rule exists");
+        let (kind, severity, tactics) = match rule {
+            Rule::Signal(rule) => ("signal", rule.severity, &rule.tactics),
+            Rule::Scenario(rule) => ("scenario", rule.severity, &rule.tactics),
+        };
+        let line = serde_json::json!({
+            "id": entry.id,
+            "kind": kind,
+            "severity": severity,
+            "tactics": tactics,
+            "refs": entry.refs,
+        });
+        writeln!(out, "{line}")?;
+    }
+    out.flush()?;
+    Ok(())
+}
+
+struct Catalog {
+    rules: Rules,
+    rulesets: Rulesets,
+    custom_rule_ids: BTreeSet<String>,
+}
+
+fn load_catalog(args: &CatalogArgs) -> anyhow::Result<Catalog> {
+    let sources = rule_sources(args.rules.as_deref())?;
+    let custom_rule_ids: BTreeSet<String> = sources[1..]
+        .iter()
+        .flat_map(RuleSource::rules)
+        .map(|rule| rule.id().to_owned())
+        .collect();
+    let rules = Rules::new(sources)?;
+    let mut rulesets = Rulesets::builtin()?;
+    if let Some(dir) = &args.rulesets {
+        rulesets.extend(load_rulesets(dir)?);
+    }
+    let unlisted: Vec<String> = rulesets
+        .unlisted(&rules)
+        .into_iter()
+        .map(str::to_owned)
+        .collect();
+    rulesets.add_to_default(unlisted);
+    rulesets.check(&rules)?;
+    Ok(Catalog {
+        rules,
+        rulesets,
+        custom_rule_ids,
+    })
+}
+
+fn load_rulesets(dir: &Path) -> anyhow::Result<Rulesets> {
+    let files = read_files(dir, RULE_EXTENSION)?
+        .into_iter()
+        .map(|(path, content)| RuleFile { path, content })
+        .collect();
+    Ok(Rulesets::parse(files)?)
 }
 
 fn rule_sources(dir: Option<&Path>) -> anyhow::Result<Vec<RuleSource>> {

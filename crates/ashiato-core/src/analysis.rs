@@ -9,6 +9,7 @@ use crate::output::{
 };
 use crate::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
 use crate::rule::{Rule, Rules, ScenarioRule, SignalRule};
+use crate::ruleset::RuleRefs;
 use crate::sequence::{ObservedSignal, ScenarioMatch, match_scenario};
 use crate::{AnalysisWindow, Severity};
 
@@ -25,6 +26,15 @@ impl Analysis {
             .retain(|signal| severities.contains(&signal.severity));
         self.matches
             .retain(|found| severities.contains(&found.severity));
+    }
+
+    pub fn attach_refs(&mut self, refs: &BTreeMap<String, Vec<RuleRefs>>) {
+        for signal in &mut self.signals {
+            signal.refs = refs.get(&signal.signal_id).cloned().unwrap_or_default();
+        }
+        for found in &mut self.matches {
+            found.refs = refs.get(&found.scenario_id).cloned().unwrap_or_default();
+        }
     }
 
     pub fn summarize(&self) -> Vec<SummaryRecord> {
@@ -213,6 +223,7 @@ fn signal_record(rules: &Rules, origin: &Origin, signal: ObservedSignal) -> Sign
         principal_key: signal.row.principal_key,
         account_id: signal.row.account_id,
         region: signal.row.region,
+        refs: Vec::new(),
     }
 }
 
@@ -254,5 +265,6 @@ fn scenario_match_record(
         end_time: found.end_time(),
         steps,
         lineage,
+        refs: Vec::new(),
     }
 }

@@ -6,6 +6,7 @@ use ashiato_core::output::{
     Sink, StepRecord,
 };
 use ashiato_core::rule::RuleSourceDigest;
+use ashiato_core::ruleset::RulesetDigest;
 use ashiato_core::{Severity, Tactic};
 use serde_json::{Value, json};
 
@@ -38,6 +39,10 @@ fn run_record() -> OutputRecord {
             id: "builtin".to_owned(),
             digest: "sha256:abc".to_owned(),
         }],
+        rulesets: vec![RulesetDigest {
+            id: "default".to_owned(),
+            digest: "sha256:def".to_owned(),
+        }],
     })
 }
 
@@ -64,6 +69,7 @@ fn run_record_has_the_shape_of_design_section_11() {
             "since": "2026-09-24T00:00:00Z",
             "until": "2026-10-25T00:00:00Z",
             "rule_sources": [{ "id": "builtin", "digest": "sha256:abc" }],
+            "rulesets": [{ "id": "default", "digest": "sha256:def" }],
         })
     );
 }
@@ -79,6 +85,7 @@ fn signal_record_carries_the_origin_and_the_signal_columns() {
         account_id: "111111111111".to_owned(),
         region: "us-east-1".to_owned(),
         evidence: evidence(),
+        refs: Vec::new(),
     });
 
     assert_eq!(
@@ -130,6 +137,7 @@ fn scenario_match_record_has_the_shape_of_design_section_11() {
             role_arn: Some("arn:aws:iam::111111111111:role/admin".to_owned()),
             issued_by_event_id: "evt-0".to_owned(),
         }],
+        refs: Vec::new(),
     });
 
     assert_eq!(

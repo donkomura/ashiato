@@ -6,6 +6,7 @@ use serde::Serialize;
 
 use crate::lineage::{LineageStep, Origin};
 use crate::rule::RuleSourceDigest;
+use crate::ruleset::{RuleRefs, RulesetDigest};
 use crate::{Severity, SignalRow, Tactic};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -23,6 +24,7 @@ pub struct RunRecord {
     pub since: DateTime<Utc>,
     pub until: DateTime<Utc>,
     pub rule_sources: Vec<RuleSourceDigest>,
+    pub rulesets: Vec<RulesetDigest>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -36,6 +38,8 @@ pub struct SignalRecord {
     pub region: String,
     #[serde(flatten)]
     pub evidence: SignalEvidence,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub refs: Vec<RuleRefs>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -57,6 +61,8 @@ pub struct ScenarioMatchRecord {
     pub end_time: DateTime<Utc>,
     pub steps: Vec<StepRecord>,
     pub lineage: Vec<LineageStep>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub refs: Vec<RuleRefs>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
