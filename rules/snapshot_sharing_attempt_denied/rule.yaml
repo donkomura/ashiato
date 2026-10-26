@@ -1,0 +1,39 @@
+kind: signal
+id: snapshot_sharing_attempt_denied
+title: 権限不足で拒否された、スナップショットや AMI の共有の試行
+severity: medium
+tactics: [TA0010]
+params:
+  bin: 1h
+attrs: [event_names]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    cast(array_agg(DISTINCT event_name ORDER BY event_name) AS VARCHAR) AS attr_event_names
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IN (
+      'AccessDenied',
+      'AccessDeniedException',
+      'UnauthorizedOperation',
+      'Client.UnauthorizedOperation'
+    )
+    AND (
+      (
+        event_source = 'ec2.amazonaws.com'
+        AND event_name IN ('ModifySnapshotAttribute', 'ModifyImageAttribute')
+      )
+      OR (
+        event_source = 'rds.amazonaws.com'
+        AND event_name IN ('ModifyDBSnapshotAttribute', 'ModifyDBClusterSnapshotAttribute')
+      )
+    )
+  GROUP BY access_key_id, principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}

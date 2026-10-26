@@ -38,12 +38,22 @@ sql: |
           'PutUserPolicy',
           'AttachRolePolicy',
           'PutRolePolicy',
-          'UpdateAssumeRolePolicy'
+          'UpdateAssumeRolePolicy',
+          'CreateRole',
+          'AddRoleToInstanceProfile'
         )
       )
       OR (
         event_source = 'ec2.amazonaws.com'
         AND event_name IN ('CreateKeyPair', 'ImportKeyPair')
+      )
+      OR (
+        event_source = 'lambda.amazonaws.com'
+        AND (
+          event_name LIKE 'CreateFunction%'
+          OR event_name LIKE 'UpdateFunctionCode%'
+          OR event_name LIKE 'AddPermission%'
+        )
       )
     )
   GROUP BY access_key_id, principal_key, recipient_account_id,

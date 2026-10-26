@@ -1,0 +1,26 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "lambda.amazonaws.com",
+      "eventName": "CreateFunction20150331",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "functionName": "backdoor",
+        "role": "arn:aws:iam::111111111111:role/backdoor"
+      },
+      "errorCode": "AccessDeniedException",
+      "errorMessage": "User is not authorized to perform this operation"
+    }
+  ]
+}

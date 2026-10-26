@@ -1,0 +1,36 @@
+kind: signal
+id: s3_bucket_permission_change_denied
+title: 権限不足で拒否された、S3 バケットのポリシー、ACL、Web サイト設定の変更や削除
+severity: medium
+tactics: [TA0040]
+params:
+  bin: 1h
+attrs: [caller_ip, event_names]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    source_ip                AS attr_caller_ip,
+    cast(array_agg(DISTINCT event_name ORDER BY event_name) AS VARCHAR) AS attr_event_names
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 's3.amazonaws.com'
+    AND event_name IN (
+      'PutBucketPolicy',
+      'DeleteBucketPolicy',
+      'PutBucketAcl',
+      'PutBucketWebsite',
+      'DeleteBucketWebsite',
+      'PutBucketPublicAccessBlock',
+      'DeleteBucketPublicAccessBlock',
+      'DeleteBucket'
+    )
+    AND error_code = 'AccessDenied'
+  GROUP BY access_key_id, principal_key, source_ip, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}

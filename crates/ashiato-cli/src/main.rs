@@ -6,12 +6,12 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
-use ashiato_core::AnalysisWindow;
 use ashiato_core::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
 use ashiato_core::rule::{RuleFile, RuleSet, Rules};
 use ashiato_core::validate::validate;
+use ashiato_core::{AnalysisWindow, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta, Utc};
@@ -84,6 +84,10 @@ struct AnalyzeArgs {
     rules: Option<PathBuf>,
     #[arg(long)]
     emit_signals: bool,
+    #[arg(long, value_delimiter = ',')]
+    severity: Vec<Severity>,
+    #[arg(long)]
+    summary: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -171,11 +175,14 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
     )?;
     let rules = Rules::new(rule_sets(args.rules.as_deref())?)?;
     let backend = DuckDbBackend::open(&database)?;
-    let analysis = tokio::runtime::Builder::new_current_thread()
+    let mut analysis = tokio::runtime::Builder::new_current_thread()
         .build()?
         .block_on(ashiato_core::analysis::analyze(&backend, &rules, &window))?;
     for warning in &analysis.warnings {
         report_warning(warning);
+    }
+    if !args.severity.is_empty() {
+        analysis.retain_severities(&args.severity);
     }
 
     let mut sink = JsonLinesSink::new(BufWriter::new(io::stdout().lock()));
@@ -185,13 +192,19 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         until: window.until(),
         rulesets: rules.rulesets().to_vec(),
     }))?;
-    if args.emit_signals {
-        for signal in analysis.signals {
-            sink.write(&OutputRecord::Signal(signal))?;
+    if args.summary {
+        for summary in analysis.summarize() {
+            sink.write(&OutputRecord::Summary(summary))?;
         }
-    }
-    for found in analysis.matches {
-        sink.write(&OutputRecord::ScenarioMatch(found))?;
+    } else {
+        if args.emit_signals {
+            for signal in analysis.signals {
+                sink.write(&OutputRecord::Signal(signal))?;
+            }
+        }
+        for found in analysis.matches {
+            sink.write(&OutputRecord::ScenarioMatch(found))?;
+        }
     }
     sink.into_inner().flush()?;
     Ok(())

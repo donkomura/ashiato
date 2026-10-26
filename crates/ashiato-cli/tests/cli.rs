@@ -370,6 +370,126 @@ fn analyze_writes_signals_only_with_emit_signals() {
     assert_eq!(signals[0]["access_key_id"], serde_json::Value::Null);
 }
 
+fn test_records<'a>(lines: &'a [serde_json::Value], kind: &str) -> Vec<&'a serde_json::Value> {
+    of_type(lines, kind)
+        .into_iter()
+        .filter(|line| {
+            [&line["signal_id"], &line["scenario_id"], &line["rule_id"]]
+                .iter()
+                .any(|id| id.as_str().is_some_and(|id| id.starts_with("test_")))
+        })
+        .collect()
+}
+
+#[test]
+fn analyze_writes_only_the_listed_severities() {
+    let case = AnalyzeCase::new();
+
+    let low = case.analyze(&["--emit-signals", "--severity", "low"]);
+    let medium_and_high = case.analyze(&["--emit-signals", "--severity", "medium,high"]);
+
+    assert_eq!(test_records(&low, "signal").len(), 2, "{low:#?}");
+    assert!(test_records(&low, "scenario_match").is_empty(), "{low:#?}");
+    for line in low.iter().skip(1) {
+        assert_eq!(line["severity"], "low", "{line}");
+    }
+    assert!(
+        test_records(&medium_and_high, "signal").is_empty(),
+        "{medium_and_high:#?}"
+    );
+    assert_eq!(
+        test_records(&medium_and_high, "scenario_match").len(),
+        1,
+        "{medium_and_high:#?}"
+    );
+    for line in medium_and_high.iter().skip(1) {
+        assert!(
+            ["medium", "high"].contains(&line["severity"].as_str().unwrap()),
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn analyze_rejects_an_unknown_severity() {
+    let case = AnalyzeCase::new();
+
+    let output = ashiato()
+        .arg("analyze")
+        .arg("--workspace")
+        .arg(case.dir.path().join("case"))
+        .args(["--since", "2026-10-01", "--until", "2026-10-02"])
+        .args(["--severity", "high,urgent"])
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("urgent"),
+        "{output:?}"
+    );
+}
+
+#[test]
+fn analyze_summary_aggregates_the_records_by_rule_and_origin() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary"]);
+
+    assert!(of_type(&lines, "signal").is_empty(), "{lines:#?}");
+    assert!(of_type(&lines, "scenario_match").is_empty(), "{lines:#?}");
+    let summaries = test_records(&lines, "summary");
+    assert_eq!(summaries.len(), 2, "{lines:#?}");
+    let scenario = summaries[0];
+    assert_eq!(scenario["kind"], "scenario_match");
+    assert_eq!(scenario["rule_id"], "test_repeated_console_login");
+    assert_eq!(scenario["severity"], "medium");
+    assert_eq!(scenario["count"], 1);
+    let signal = summaries[1];
+    assert_eq!(signal["kind"], "signal");
+    assert_eq!(signal["rule_id"], "test_console_login");
+    assert_eq!(signal["severity"], "low");
+    assert_eq!(
+        signal["origin"]["id"],
+        "iam_user:arn:aws:iam::111111111111:user/alice"
+    );
+    assert_eq!(signal["count"], 2);
+    assert_eq!(signal["events"], 2);
+    assert_eq!(signal["source_ips"], 1);
+    assert_eq!(signal["first_seen"], "2026-10-01T10:00:00Z");
+    assert_eq!(signal["last_seen"], "2026-10-01T10:20:00Z");
+}
+
+#[test]
+fn analyze_summary_is_ordered_from_the_most_severe() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary"]);
+
+    let rank = |severity: &str| {
+        ["critical", "high", "medium", "low"]
+            .iter()
+            .position(|s| *s == severity)
+            .unwrap()
+    };
+    let ranks: Vec<usize> = of_type(&lines, "summary")
+        .iter()
+        .map(|line| rank(line["severity"].as_str().unwrap()))
+        .collect();
+    assert!(ranks.is_sorted(), "{lines:#?}");
+}
+
+#[test]
+fn analyze_summary_includes_only_the_listed_severities() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary", "--severity", "medium"]);
+
+    let summaries = test_records(&lines, "summary");
+    assert_eq!(summaries.len(), 1, "{lines:#?}");
+    assert_eq!(summaries[0]["rule_id"], "test_repeated_console_login");
+}
+
 #[test]
 fn analyze_fails_when_the_workspace_has_not_been_ingested() {
     let dir = TempDir::new().unwrap();

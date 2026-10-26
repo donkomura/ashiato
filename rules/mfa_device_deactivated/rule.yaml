@@ -1,0 +1,22 @@
+kind: signal
+id: mfa_device_deactivated
+title: MFA デバイスの無効化
+severity: medium
+tactics: [TA0005, TA0006]
+attrs: [serial_number]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    {{ json(request_parameters, '$.serialNumber') }} AS attr_serial_number
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'iam.amazonaws.com'
+    AND event_name = 'DeactivateMFADevice'
+    AND error_code IS NULL

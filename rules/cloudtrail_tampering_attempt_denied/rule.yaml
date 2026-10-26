@@ -1,0 +1,32 @@
+kind: signal
+id: cloudtrail_tampering_attempt_denied
+title: 権限不足で拒否された、CloudTrail の証跡の停止や変更の試行
+severity: medium
+tactics: [TA0005]
+params:
+  bin: 1h
+attrs: [event_names]
+sql: |
+  SELECT
+    min(event_time)          AS start_time,
+    max(event_time)          AS end_time,
+    array_agg(event_id)      AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)           AS source_ip,
+    recipient_account_id     AS account_id,
+    min(aws_region)          AS region,
+    cast(array_agg(DISTINCT event_name ORDER BY event_name) AS VARCHAR) AS attr_event_names
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'cloudtrail.amazonaws.com'
+    AND event_name IN (
+      'StopLogging',
+      'DeleteTrail',
+      'UpdateTrail',
+      'PutEventSelectors',
+      'PutInsightSelectors'
+    )
+    AND error_code IN ('AccessDenied', 'AccessDeniedException')
+  GROUP BY access_key_id, principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}

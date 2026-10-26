@@ -184,3 +184,19 @@ async fn leaked_key_recon_persistence_includes_the_optional_enumeration_when_pre
         expected(0)
     );
 }
+
+#[tokio::test]
+async fn first_seen_identity_probe_merges_the_probes_from_one_ip_within_an_hour() {
+    let analysis = analyze_builtin_fixture(
+        "first_seen_identity_probe/fixtures/positive/repeated_probes_from_new_ip.json",
+    )
+    .await;
+
+    let event_counts: Vec<usize> = analysis
+        .signals
+        .iter()
+        .filter(|signal| signal.signal_id == "first_seen_identity_probe")
+        .map(|signal| signal.evidence.event_ids.len())
+        .collect();
+    assert_eq!(event_counts, [5, 1]);
+}

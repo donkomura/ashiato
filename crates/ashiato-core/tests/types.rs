@@ -104,3 +104,17 @@ fn negative_lookback_is_rejected() {
         Err(WindowError::NegativeLookback(TimeDelta::days(-1)))
     );
 }
+
+#[test]
+fn severity_parses_from_its_lowercase_name() {
+    assert_eq!("high".parse::<Severity>().unwrap(), Severity::High);
+    let error = "urgent".parse::<Severity>().unwrap_err();
+    assert!(error.to_string().contains("urgent"), "{error}");
+}
+
+#[test]
+fn severities_are_ordered_from_low_to_critical() {
+    assert!(Severity::Low < Severity::Medium);
+    assert!(Severity::Medium < Severity::High);
+    assert!(Severity::High < Severity::Critical);
+}

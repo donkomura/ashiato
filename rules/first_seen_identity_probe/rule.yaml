@@ -4,17 +4,19 @@ title: ベースラインにない送信元 IP からの GetCallerIdentity
 severity: medium
 tactics: [TA0007]
 external_source_only: true
+params:
+  bin: 1h
 attrs: [caller_ip]
 sql: |
   SELECT
-    e.event_time           AS start_time,
-    e.event_time           AS end_time,
-    [e.event_id]           AS event_ids,
+    min(e.event_time)      AS start_time,
+    max(e.event_time)      AS end_time,
+    array_agg(e.event_id)  AS event_ids,
     e.access_key_id,
     e.principal_key,
     e.source_ip,
     e.recipient_account_id AS account_id,
-    e.aws_region           AS region,
+    min(e.aws_region)      AS region,
     e.source_ip            AS attr_caller_ip
   FROM events e
   WHERE {{ in_analysis_window(e.event_time) }}
@@ -27,3 +29,5 @@ sql: |
         AND b.dim = 'source_ip'
         AND b.value = e.source_ip
     )
+  GROUP BY e.access_key_id, e.principal_key, e.source_ip, e.recipient_account_id,
+           {{ time_bin(e.event_time, param('bin')) }}
