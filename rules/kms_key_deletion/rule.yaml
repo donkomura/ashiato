@@ -1,0 +1,22 @@
+kind: signal
+id: kms_key_deletion
+title: KMS キーの削除予約や無効化
+severity: medium
+tactics: [TA0040]
+attrs: [key_id]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    {{ json(request_parameters, '$.keyId') }} AS attr_key_id
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 'kms.amazonaws.com'
+    AND event_name IN ('ScheduleKeyDeletion', 'DisableKey')
+    AND error_code IS NULL

@@ -1,0 +1,53 @@
+kind: signal
+id: security_monitoring_disabled
+title: GuardDuty、Config、フローログなどの監視の無効化
+severity: high
+tactics: [TA0005]
+attrs: [action]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    event_name           AS attr_action
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND (
+      (
+        event_source = 'guardduty.amazonaws.com'
+        AND (
+          event_name IN (
+            'DeleteDetector',
+            'DisassociateFromMasterAccount',
+            'DisassociateFromAdministratorAccount',
+            'CreateIPSet'
+          )
+          OR (
+            event_name = 'UpdateDetector'
+            AND {{ json(request_parameters, '$.enable') }} = 'false'
+          )
+        )
+      )
+      OR (
+        event_source = 'config.amazonaws.com'
+        AND event_name IN (
+          'StopConfigurationRecorder',
+          'DeleteConfigurationRecorder',
+          'DeleteDeliveryChannel'
+        )
+      )
+      OR (event_source = 'ec2.amazonaws.com' AND event_name = 'DeleteFlowLogs')
+      OR (event_source = 'securityhub.amazonaws.com' AND event_name = 'DisableSecurityHub')
+      OR (event_source = 'access-analyzer.amazonaws.com' AND event_name = 'DeleteAnalyzer')
+      OR (
+        event_source = 's3.amazonaws.com'
+        AND event_name = 'PutBucketLogging'
+        AND {{ json(request_parameters, '$.BucketLoggingStatus.LoggingEnabled') }} IS NULL
+      )
+    )

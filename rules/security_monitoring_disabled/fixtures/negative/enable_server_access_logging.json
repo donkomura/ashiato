@@ -1,0 +1,32 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutBucketLogging",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0 Python/3.11.6 Linux/6.5.0-1014-aws exe/x86_64.ubuntu.22",
+      "requestParameters": {
+        "bucketName": "reports",
+        "BucketLoggingStatus": {
+          "xmlns": "http://s3.amazonaws.com/doc/2006-03-01/",
+          "LoggingEnabled": {
+            "TargetBucket": "logs",
+            "TargetPrefix": "reports/"
+          }
+        },
+        "logging": ""
+      },
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}

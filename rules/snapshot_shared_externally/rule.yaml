@@ -1,0 +1,50 @@
+kind: signal
+id: snapshot_shared_externally
+title: EBS スナップショット、AMI、RDS スナップショットの他アカウントへの共有や公開
+severity: medium
+tactics: [TA0010]
+attrs: [resource, shared_with]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    coalesce(
+      {{ json(request_parameters, '$.snapshotId') }},
+      {{ json(request_parameters, '$.imageId') }},
+      {{ json(request_parameters, '$.dBSnapshotIdentifier') }},
+      {{ json(request_parameters, '$.dBClusterSnapshotIdentifier') }}
+    ) AS attr_resource,
+    coalesce(
+      {{ json(request_parameters, '$.createVolumePermission.add.items[0].group') }},
+      {{ json(request_parameters, '$.createVolumePermission.add.items[0].userId') }},
+      {{ json(request_parameters, '$.launchPermission.add.items[0].group') }},
+      {{ json(request_parameters, '$.launchPermission.add.items[0].userId') }},
+      {{ json(request_parameters, '$.valuesToAdd[0]') }}
+    ) AS attr_shared_with
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND (
+      (
+        event_source = 'ec2.amazonaws.com'
+        AND event_name = 'ModifySnapshotAttribute'
+        AND {{ json(request_parameters, '$.createVolumePermission.add') }} IS NOT NULL
+      )
+      OR (
+        event_source = 'ec2.amazonaws.com'
+        AND event_name = 'ModifyImageAttribute'
+        AND {{ json(request_parameters, '$.launchPermission.add') }} IS NOT NULL
+      )
+      OR (
+        event_source = 'rds.amazonaws.com'
+        AND event_name IN ('ModifyDBSnapshotAttribute', 'ModifyDBClusterSnapshotAttribute')
+        AND {{ json(request_parameters, '$.attributeName') }} = 'restore'
+        AND {{ json(request_parameters, '$.valuesToAdd[0]') }} IS NOT NULL
+      )
+    )
