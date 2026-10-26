@@ -1,0 +1,28 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "sts.amazonaws.com",
+      "eventName": "AssumeRole",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDABOB",
+        "arn": "arn:aws:iam::222222222222:user/bob",
+        "accountId": "222222222222",
+        "userName": "bob",
+        "accessKeyId": "AKIABOB"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "roleArn": "arn:aws:iam::111111111111:role/vendor-access",
+        "roleSessionName": "bob"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": true,
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform: sts:AssumeRole",
+      "responseElements": null
+    }
+  ]
+}

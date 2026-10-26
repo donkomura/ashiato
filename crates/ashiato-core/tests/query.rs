@@ -3,7 +3,9 @@ use std::sync::Mutex;
 
 use ashiato_core::lineage::LineageEdge;
 use ashiato_core::macros::{Dialect, MacroError};
-use ashiato_core::query::{BackendError, QueryBackend, SignalQueryError, query_signal_rule};
+use ashiato_core::query::{
+    BackendError, DataAvailability, QueryBackend, SignalQueryError, query_signal_rule,
+};
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_core::{AnalysisWindow, SignalRow};
 use async_trait::async_trait;
@@ -36,6 +38,13 @@ impl QueryBackend for FakeBackend {
     async fn query_signals(&self, sql: &str) -> Result<Vec<SignalRow>, BackendError> {
         self.received_sql.lock().unwrap().push(sql.to_owned());
         (self.response)()
+    }
+
+    async fn data_availability(
+        &self,
+        _window: &AnalysisWindow,
+    ) -> Result<DataAvailability, BackendError> {
+        Ok(DataAvailability::default())
     }
 
     async fn query_lineage(

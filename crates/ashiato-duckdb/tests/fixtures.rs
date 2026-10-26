@@ -290,3 +290,77 @@ async fn builtin_rule_fixtures_pass() {
 
     assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
+
+const S3_ACTIVITY: &str = r#"
+kind: signal
+id: s3_activity
+title: S3 の操作
+severity: low
+tactics: [TA0009]
+requires: [s3_data_events]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_source = 's3.amazonaws.com'
+"#;
+
+fn s3_activity_rules() -> Rules {
+    let set = RuleSource::parse(
+        "test",
+        vec![RuleFile {
+            path: "s3_activity/rule.yaml".to_owned(),
+            content: S3_ACTIVITY.to_owned(),
+        }],
+    )
+    .unwrap();
+    Rules::new([set]).unwrap()
+}
+
+#[tokio::test]
+async fn a_signal_rule_is_skipped_on_a_fixture_without_the_data_it_requires() {
+    let report = run_fixture(
+        &s3_activity_rules(),
+        &fixture(
+            "s3_activity/fixtures/positive/management_only.json",
+            json!([other_event()]),
+        ),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        report.verdict,
+        Verdict::Failed {
+            expectation: Expectation::Positive,
+            detections: Detections::Signals(0),
+        }
+    );
+}
+
+#[tokio::test]
+async fn a_signal_rule_runs_on_a_fixture_with_the_data_it_requires() {
+    let report = run_fixture(
+        &s3_activity_rules(),
+        &fixture(
+            "s3_activity/fixtures/positive/data_event.json",
+            json!([other_event(), {
+                "eventSource": "s3.amazonaws.com",
+                "eventName": "GetObject",
+                "eventCategory": "Data",
+            }]),
+        ),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(report.verdict, Verdict::Passed);
+}

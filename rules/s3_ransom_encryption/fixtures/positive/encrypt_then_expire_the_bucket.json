@@ -1,0 +1,245 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T09:59:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "ListBuckets",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "host": [
+          "s3.amazonaws.com"
+        ]
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": true
+    },
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "key": "data/0.csv",
+        "Host": "customer-data.s3.amazonaws.com",
+        "x-amz-server-side-encryption-customer-algorithm": "AES256"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader",
+        "SSEApplied": "SSE_C"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-data/data/0.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:01:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "key": "data/1.csv",
+        "Host": "customer-data.s3.amazonaws.com",
+        "x-amz-server-side-encryption-customer-algorithm": "AES256"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader",
+        "SSEApplied": "SSE_C"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-data/data/1.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:02:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "key": "data/2.csv",
+        "Host": "customer-data.s3.amazonaws.com",
+        "x-amz-server-side-encryption-customer-algorithm": "AES256"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader",
+        "SSEApplied": "SSE_C"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-data/data/2.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:03:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "key": "data/3.csv",
+        "Host": "customer-data.s3.amazonaws.com",
+        "x-amz-server-side-encryption-customer-algorithm": "AES256"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader",
+        "SSEApplied": "SSE_C"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-data/data/3.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:04:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutObject",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "key": "data/4.csv",
+        "Host": "customer-data.s3.amazonaws.com",
+        "x-amz-server-side-encryption-customer-algorithm": "AES256"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false,
+      "eventCategory": "Data",
+      "managementEvent": false,
+      "additionalEventData": {
+        "SignatureVersion": "SigV4",
+        "AuthenticationMethod": "AuthHeader",
+        "SSEApplied": "SSE_C"
+      },
+      "resources": [
+        {
+          "type": "AWS::S3::Object",
+          "ARN": "arn:aws:s3:::customer-data/data/4.csv"
+        }
+      ]
+    },
+    {
+      "eventTime": "2026-10-01T10:30:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutBucketLifecycle",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "lifecycle": [
+          ""
+        ],
+        "host": [
+          "customer-data.s3.amazonaws.com"
+        ],
+        "LifecycleConfiguration": {
+          "xmlns": "http://s3.amazonaws.com/doc/2006-03-01/",
+          "Rule": {
+            "ID": "expire",
+            "Status": "Enabled",
+            "Filter": {
+              "Prefix": ""
+            },
+            "Expiration": {
+              "Days": 1
+            }
+          }
+        }
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": false
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "sts.amazonaws.com",
+      "eventName": "AssumeRole",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "roleArn": "arn:aws:iam::111111111111:role/admin",
+        "roleSessionName": "bob"
+      },
+      "recipientAccountId": "111111111111",
+      "readOnly": true,
+      "responseElements": {
+        "credentials": {
+          "accessKeyId": "ASIAADMIN",
+          "sessionToken": "token",
+          "expiration": "Oct 1, 2026, 11:00:00 AM"
+        },
+        "assumedRoleUser": {
+          "assumedRoleId": "AROAADMIN:bob",
+          "arn": "arn:aws:sts::111111111111:assumed-role/admin/bob"
+        }
+      }
+    }
+  ]
+}
