@@ -3,9 +3,9 @@ use std::collections::{BTreeMap, HashMap};
 use ashiato_core::analysis::{AnalysisError, analyze};
 use ashiato_core::lineage::{Caller, LineageEdge, LineageStep, Origin, OriginKind};
 use ashiato_core::macros::Dialect;
-use ashiato_core::output::{SignalEvidence, StepRecord};
-use ashiato_core::query::{BackendError, QueryBackend};
-use ashiato_core::rule::{RuleFile, RuleSource, Rules};
+use ashiato_core::output::{RuleSkippedRecord, SignalEvidence, SkipReason, StepRecord};
+use ashiato_core::query::{BackendError, DataAvailability, QueryBackend};
+use ashiato_core::rule::{DataRequirement, RuleFile, RuleSource, Rules};
 use ashiato_core::{AnalysisWindow, Severity, SignalRow, Tactic};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -44,6 +44,29 @@ tactics: [TA0007]
 sql: SELECT 'broken'
 "#;
 
+const S3_RULE: &str = r#"
+kind: signal
+id: s3_read
+title: S3 のオブジェクトの読み取り
+severity: medium
+tactics: [TA0010]
+requires: [s3_data_events]
+sql: SELECT 's3_read'
+"#;
+
+const S3_SCENARIO: &str = r#"
+kind: scenario
+id: login_then_s3_read
+title: ログインの後の S3 のオブジェクトの読み取り
+severity: high
+tactics: [TA0001, TA0010]
+window: 1h
+steps:
+  - signal: login
+  - signal: s3_read
+    optional: true
+"#;
+
 const SCENARIO: &str = r#"
 kind: scenario
 id: login_then_escalate
@@ -61,6 +84,8 @@ struct FakeBackend {
     signals: HashMap<String, Vec<SignalRow>>,
     edges: Vec<LineageEdge>,
     lineage_fails: bool,
+    data: DataAvailability,
+    data_availability_fails: bool,
 }
 
 impl FakeBackend {
@@ -89,6 +114,18 @@ impl QueryBackend for FakeBackend {
             .ok_or_else(|| BackendError::MissingColumn {
                 column: "start_time".to_owned(),
             })
+    }
+
+    async fn data_availability(
+        &self,
+        _window: &AnalysisWindow,
+    ) -> Result<DataAvailability, BackendError> {
+        if self.data_availability_fails {
+            return Err(BackendError::MissingColumn {
+                column: "events".to_owned(),
+            });
+        }
+        Ok(self.data)
     }
 
     async fn query_lineage(
@@ -326,6 +363,119 @@ async fn a_failing_lineage_query_is_an_error() {
 
     assert!(
         matches!(error, AnalysisError::Lineage(_)),
+        "unexpected error: {error:?}"
+    );
+}
+
+fn s3_rules() -> Rules {
+    rules(&[
+        ("login", LOGIN_RULE),
+        ("s3_read", S3_RULE),
+        ("login_then_s3_read", S3_SCENARIO),
+    ])
+}
+
+fn skipped(rule_id: &str) -> RuleSkippedRecord {
+    RuleSkippedRecord {
+        rule_id: rule_id.to_owned(),
+        reason: SkipReason::MissingData,
+        requires: vec![DataRequirement::S3DataEvents],
+    }
+}
+
+#[tokio::test]
+async fn rules_requiring_missing_data_and_their_scenarios_are_skipped() {
+    let backend = FakeBackend {
+        data: DataAvailability {
+            events: 10,
+            s3_data_events: false,
+        },
+        ..FakeBackend::default()
+    }
+    .with_signals(
+        "SELECT 'login'",
+        vec![row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")],
+    );
+
+    let mut analysis = analyze(&backend, &s3_rules(), &window()).await.unwrap();
+
+    analysis.skipped.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
+    assert_eq!(
+        analysis.skipped,
+        vec![skipped("login_then_s3_read"), skipped("s3_read")]
+    );
+    assert!(analysis.matches.is_empty(), "{:#?}", analysis.matches);
+    let signal_ids: Vec<&str> = analysis
+        .signals
+        .iter()
+        .map(|signal| signal.signal_id.as_str())
+        .collect();
+    assert_eq!(signal_ids, ["login"]);
+}
+
+#[tokio::test]
+async fn rules_requiring_available_data_are_run() {
+    let data = DataAvailability {
+        events: 10,
+        s3_data_events: true,
+    };
+    let backend = FakeBackend {
+        data,
+        ..FakeBackend::default()
+    }
+    .with_signals(
+        "SELECT 'login'",
+        vec![row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")],
+    )
+    .with_signals(
+        "SELECT 's3_read'",
+        vec![row("10:10", ALICE_KEY, ALICE_ARN, "evt-read")],
+    );
+
+    let analysis = analyze(&backend, &s3_rules(), &window()).await.unwrap();
+
+    assert!(analysis.skipped.is_empty(), "{:#?}", analysis.skipped);
+    assert_eq!(analysis.data, data);
+    assert_eq!(analysis.matches.len(), 1, "{:#?}", analysis.matches);
+    assert_eq!(analysis.matches[0].scenario_id, "login_then_s3_read");
+}
+
+#[tokio::test]
+async fn the_analysis_reports_the_data_availability_of_the_backend() {
+    let data = DataAvailability {
+        events: 42,
+        s3_data_events: false,
+    };
+    let backend = FakeBackend {
+        data,
+        ..FakeBackend::default()
+    }
+    .with_signals("SELECT 'login'", Vec::new())
+    .with_signals("SELECT 'escalate'", Vec::new());
+
+    let analysis = analyze(&backend, &scenario_rules(), &window())
+        .await
+        .unwrap();
+
+    assert_eq!(analysis.data, data);
+    assert!(analysis.skipped.is_empty(), "{:#?}", analysis.skipped);
+}
+
+#[tokio::test]
+async fn a_failing_data_availability_query_is_an_error() {
+    let backend = FakeBackend {
+        data_availability_fails: true,
+        ..FakeBackend::default()
+    }
+    .with_signals("SELECT 'login'", Vec::new())
+    .with_signals("SELECT 'escalate'", Vec::new());
+
+    let error = analyze(&backend, &scenario_rules(), &window())
+        .await
+        .unwrap_err();
+
+    assert!(
+        matches!(error, AnalysisError::DataAvailability(_)),
         "unexpected error: {error:?}"
     );
 }

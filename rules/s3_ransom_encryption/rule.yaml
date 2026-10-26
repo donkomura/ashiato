@@ -1,0 +1,13 @@
+kind: scenario
+id: s3_ransom_encryption
+title: S3 のオブジェクトを顧客提供の鍵で暗号化してから、同じバケットに有効期限による削除を設定する
+severity: critical
+tactics: [TA0040]
+window: 24h
+steps:
+  - signal: s3_bucket_enumeration
+    optional: true
+  - signal: s3_ssec_encryption
+    same: [bucket]
+  - signal: s3_lifecycle_expiration_set
+    same: [bucket]

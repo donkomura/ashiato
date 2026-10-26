@@ -1,0 +1,9 @@
+kind: scenario
+id: quota_raise_then_mining
+title: サービスクォータを引き上げた後に、マイニング用の計算資源を起動する
+severity: high
+tactics: [TA0112, TA0040]
+window: 24h
+steps:
+  - signal: service_quota_increase
+  - signal: compute_resource_launch

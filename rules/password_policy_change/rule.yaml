@@ -2,7 +2,7 @@ kind: signal
 id: password_policy_change
 title: アカウントのパスワードポリシーの変更や削除の試行
 severity: low
-tactics: [TA0005]
+tactics: [TA0112]
 attrs: [result]
 sql: |
   SELECT

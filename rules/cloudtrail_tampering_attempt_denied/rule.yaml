@@ -2,7 +2,7 @@ kind: signal
 id: cloudtrail_tampering_attempt_denied
 title: 権限不足で拒否された、CloudTrail の証跡の停止や変更の試行
 severity: medium
-tactics: [TA0005]
+tactics: [TA0112]
 params:
   bin: 1h
 attrs: [event_names]
