@@ -1,0 +1,479 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-0",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:05Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-1",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:10Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-2",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:15Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-3",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:20Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-4",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:25Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-5",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:30Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-6",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:35Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-7",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:40Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-8",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:45Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-9",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:50Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-10",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:00:55Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-11",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-12",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:05Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-13",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:10Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-14",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:15Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-15",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:20Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-16",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:25Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-17",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:30Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-18",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:35Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-19",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:40Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-20",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:45Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-21",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:50Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-22",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:01:55Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-23",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    },
+    {
+      "eventTime": "2026-10-01T10:02:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "AWSAccount",
+        "principalId": "",
+        "accountId": "ANONYMOUS_PRINCIPAL"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "guess-24",
+        "acl": ""
+      },
+      "errorCode": "AccessDenied",
+      "errorMessage": "User is not authorized to perform this operation"
+    }
+  ]
+}

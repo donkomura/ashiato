@@ -1,0 +1,504 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-0",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:05Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-1",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:10Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-2",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:15Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-3",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:20Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-4",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:25Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-5",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:30Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-6",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:35Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-7",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:40Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-8",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:45Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-9",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:50Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-10",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:00:55Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-11",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-12",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:05Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-13",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:10Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-14",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:15Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-15",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:20Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-16",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:25Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-17",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:30Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-18",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:35Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-19",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:40Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-20",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:45Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-21",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:50Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-22",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:01:55Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-23",
+        "acl": ""
+      }
+    },
+    {
+      "eventTime": "2026-10-01T10:02:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "GetBucketAcl",
+      "readOnly": true,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "bucketName": "bucket-24",
+        "acl": ""
+      }
+    }
+  ]
+}
