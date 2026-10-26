@@ -1,0 +1,10 @@
+kind: scenario
+id: backup_inhibit_then_destruction
+title: 復旧手段を無効にしてから資源を一斉に削除する
+severity: critical
+tactics: [TA0040]
+window: 6h
+steps:
+  - signal: recovery_inhibited
+  - signal: resource_destruction_burst
+    max_gap: 1h
