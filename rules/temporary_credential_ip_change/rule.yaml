@@ -1,0 +1,55 @@
+kind: signal
+id: temporary_credential_ip_change
+title: 最初に使われた IP と異なる IP からの一時認証情報の利用
+severity: medium
+tactics: [TA0001, TA0006]
+attrs: [origin_ip]
+sql: |
+  WITH scoped AS (
+    SELECT *
+    FROM events
+    WHERE ({{ in_baseline_window(event_time) }} OR {{ in_analysis_window(event_time) }})
+      AND starts_with(access_key_id, 'ASIA')
+      AND invoked_by IS NULL
+      AND source_ip NOT LIKE '%.amazonaws.com'
+      AND source_ip <> 'AWS Internal'
+      AND coalesce(credential_from_console, FALSE) = FALSE
+      AND strpos(coalesce(user_agent, ''), 'aws-internal') = 0
+      AND coalesce(user_agent, '') <> 'awslambda-worker'
+  ),
+  first_use AS (
+    SELECT access_key_id, min(event_time) AS first_time
+    FROM scoped
+    GROUP BY access_key_id
+  ),
+  origins AS (
+    SELECT DISTINCT s.access_key_id, s.source_ip
+    FROM scoped s
+    JOIN first_use f
+      ON f.access_key_id = s.access_key_id
+     AND f.first_time = s.event_time
+  ),
+  origin_labels AS (
+    SELECT access_key_id, min(source_ip) AS origin_ip
+    FROM origins
+    GROUP BY access_key_id
+  )
+  SELECT
+    min(s.event_time)        AS start_time,
+    max(s.event_time)        AS end_time,
+    array_agg(s.event_id)    AS event_ids,
+    s.access_key_id,
+    s.principal_key,
+    s.source_ip,
+    s.recipient_account_id   AS account_id,
+    min(s.aws_region)        AS region,
+    o.origin_ip              AS attr_origin_ip
+  FROM scoped s
+  JOIN origin_labels o ON o.access_key_id = s.access_key_id
+  WHERE {{ in_analysis_window(s.event_time) }}
+    AND NOT EXISTS (
+      SELECT 1 FROM origins x
+      WHERE x.access_key_id = s.access_key_id
+        AND x.source_ip = s.source_ip
+    )
+  GROUP BY s.access_key_id, s.principal_key, s.source_ip, s.recipient_account_id, o.origin_ip

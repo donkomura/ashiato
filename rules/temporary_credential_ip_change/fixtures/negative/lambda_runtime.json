@@ -1,0 +1,66 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "logs.amazonaws.com",
+      "eventName": "CreateLogStream",
+      "awsRegion": "us-east-1",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAHANDLER:ASIALAMBDA",
+        "arn": "arn:aws:sts::111111111111:assumed-role/handler/ASIALAMBDA",
+        "accountId": "111111111111",
+        "accessKeyId": "ASIALAMBDA",
+        "sessionContext": {
+          "sessionIssuer": {
+            "type": "Role",
+            "principalId": "AROAHANDLER",
+            "arn": "arn:aws:iam::111111111111:role/handler",
+            "accountId": "111111111111",
+            "userName": "handler"
+          },
+          "attributes": {
+            "creationDate": "2026-10-01T09:00:00Z",
+            "mfaAuthenticated": "false"
+          }
+        }
+      },
+      "sourceIPAddress": "203.0.113.10",
+      "userAgent": "awslambda-worker",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111"
+    },
+    {
+      "eventTime": "2026-10-01T10:30:00Z",
+      "eventSource": "logs.amazonaws.com",
+      "eventName": "CreateLogStream",
+      "awsRegion": "us-east-1",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "AssumedRole",
+        "principalId": "AROAHANDLER:ASIALAMBDA",
+        "arn": "arn:aws:sts::111111111111:assumed-role/handler/ASIALAMBDA",
+        "accountId": "111111111111",
+        "accessKeyId": "ASIALAMBDA",
+        "sessionContext": {
+          "sessionIssuer": {
+            "type": "Role",
+            "principalId": "AROAHANDLER",
+            "arn": "arn:aws:iam::111111111111:role/handler",
+            "accountId": "111111111111",
+            "userName": "handler"
+          },
+          "attributes": {
+            "creationDate": "2026-10-01T09:00:00Z",
+            "mfaAuthenticated": "false"
+          }
+        }
+      },
+      "sourceIPAddress": "198.51.100.200",
+      "userAgent": "awslambda-worker",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}

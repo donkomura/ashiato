@@ -1,0 +1,51 @@
+kind: signal
+id: cloudtrail_logging_paused
+title: CloudTrail の証跡の一時停止と再開
+severity: high
+tactics: [TA0005]
+attrs: [trail, restarted_at]
+sql: |
+  WITH stops AS (
+    SELECT *
+    FROM events
+    WHERE {{ in_analysis_window(event_time) }}
+      AND event_source = 'cloudtrail.amazonaws.com'
+      AND event_name = 'StopLogging'
+      AND error_code IS NULL
+  ),
+  starts AS (
+    SELECT *
+    FROM events
+    WHERE event_source = 'cloudtrail.amazonaws.com'
+      AND event_name = 'StartLogging'
+      AND error_code IS NULL
+  ),
+  restarts AS (
+    SELECT s.event_id AS stop_id, min(r.event_time) AS restart_time
+    FROM stops s
+    JOIN starts r
+      ON r.recipient_account_id = s.recipient_account_id
+     AND {{ json(r.request_parameters, '$.name') }} = {{ json(s.request_parameters, '$.name') }}
+     AND r.event_time > s.event_time
+     AND r.event_time <= s.event_time + INTERVAL '24 hours'
+    GROUP BY s.event_id
+  )
+  SELECT
+    s.event_time             AS start_time,
+    x.restart_time           AS end_time,
+    [s.event_id, min(r.event_id)] AS event_ids,
+    s.access_key_id,
+    s.principal_key,
+    s.source_ip,
+    s.recipient_account_id   AS account_id,
+    s.aws_region             AS region,
+    {{ json(s.request_parameters, '$.name') }} AS attr_trail,
+    cast(x.restart_time AS VARCHAR) AS attr_restarted_at
+  FROM stops s
+  JOIN restarts x ON x.stop_id = s.event_id
+  JOIN starts r
+    ON r.event_time = x.restart_time
+   AND r.recipient_account_id = s.recipient_account_id
+   AND {{ json(r.request_parameters, '$.name') }} = {{ json(s.request_parameters, '$.name') }}
+  GROUP BY s.event_id, s.event_time, x.restart_time, s.access_key_id, s.principal_key,
+           s.source_ip, s.recipient_account_id, s.aws_region, s.request_parameters
