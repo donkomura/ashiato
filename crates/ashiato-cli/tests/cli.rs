@@ -431,6 +431,66 @@ fn analyze_rejects_an_unknown_severity() {
 }
 
 #[test]
+fn analyze_summary_aggregates_the_records_by_rule_and_origin() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary"]);
+
+    assert!(of_type(&lines, "signal").is_empty(), "{lines:#?}");
+    assert!(of_type(&lines, "scenario_match").is_empty(), "{lines:#?}");
+    let summaries = test_records(&lines, "summary");
+    assert_eq!(summaries.len(), 2, "{lines:#?}");
+    let scenario = summaries[0];
+    assert_eq!(scenario["kind"], "scenario_match");
+    assert_eq!(scenario["rule_id"], "test_repeated_console_login");
+    assert_eq!(scenario["severity"], "medium");
+    assert_eq!(scenario["count"], 1);
+    let signal = summaries[1];
+    assert_eq!(signal["kind"], "signal");
+    assert_eq!(signal["rule_id"], "test_console_login");
+    assert_eq!(signal["severity"], "low");
+    assert_eq!(
+        signal["origin"]["id"],
+        "iam_user:arn:aws:iam::111111111111:user/alice"
+    );
+    assert_eq!(signal["count"], 2);
+    assert_eq!(signal["events"], 2);
+    assert_eq!(signal["source_ips"], 1);
+    assert_eq!(signal["first_seen"], "2026-10-01T10:00:00Z");
+    assert_eq!(signal["last_seen"], "2026-10-01T10:20:00Z");
+}
+
+#[test]
+fn analyze_summary_is_ordered_from_the_most_severe() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary"]);
+
+    let rank = |severity: &str| {
+        ["critical", "high", "medium", "low"]
+            .iter()
+            .position(|s| *s == severity)
+            .unwrap()
+    };
+    let ranks: Vec<usize> = of_type(&lines, "summary")
+        .iter()
+        .map(|line| rank(line["severity"].as_str().unwrap()))
+        .collect();
+    assert!(ranks.is_sorted(), "{lines:#?}");
+}
+
+#[test]
+fn analyze_summary_includes_only_the_listed_severities() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--summary", "--severity", "medium"]);
+
+    let summaries = test_records(&lines, "summary");
+    assert_eq!(summaries.len(), 1, "{lines:#?}");
+    assert_eq!(summaries[0]["rule_id"], "test_repeated_console_login");
+}
+
+#[test]
 fn analyze_fails_when_the_workspace_has_not_been_ingested() {
     let dir = TempDir::new().unwrap();
 

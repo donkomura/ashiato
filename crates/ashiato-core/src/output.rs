@@ -14,6 +14,7 @@ pub enum OutputRecord {
     Run(RunRecord),
     Signal(SignalRecord),
     ScenarioMatch(ScenarioMatchRecord),
+    Summary(SummaryRecord),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -62,6 +63,26 @@ pub struct ScenarioMatchRecord {
 pub struct StepRecord {
     pub signal_id: String,
     pub signals: Vec<SignalEvidence>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RecordKind {
+    ScenarioMatch,
+    Signal,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SummaryRecord {
+    pub kind: RecordKind,
+    pub rule_id: String,
+    pub severity: Severity,
+    pub origin: Origin,
+    pub count: usize,
+    pub first_seen: DateTime<Utc>,
+    pub last_seen: DateTime<Utc>,
+    pub source_ips: usize,
+    pub events: usize,
 }
 
 pub trait Sink {

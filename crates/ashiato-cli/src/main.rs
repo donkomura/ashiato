@@ -86,6 +86,8 @@ struct AnalyzeArgs {
     emit_signals: bool,
     #[arg(long, value_delimiter = ',')]
     severity: Vec<Severity>,
+    #[arg(long)]
+    summary: bool,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -190,13 +192,19 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         until: window.until(),
         rulesets: rules.rulesets().to_vec(),
     }))?;
-    if args.emit_signals {
-        for signal in analysis.signals {
-            sink.write(&OutputRecord::Signal(signal))?;
+    if args.summary {
+        for summary in analysis.summarize() {
+            sink.write(&OutputRecord::Summary(summary))?;
         }
-    }
-    for found in analysis.matches {
-        sink.write(&OutputRecord::ScenarioMatch(found))?;
+    } else {
+        if args.emit_signals {
+            for signal in analysis.signals {
+                sink.write(&OutputRecord::Signal(signal))?;
+            }
+        }
+        for found in analysis.matches {
+            sink.write(&OutputRecord::ScenarioMatch(found))?;
+        }
     }
     sink.into_inner().flush()?;
     Ok(())
