@@ -1,0 +1,36 @@
+kind: signal
+id: recovery_inhibited
+title: バケットの版の管理の停止、バックアップの削除、自動バックアップの無効化
+severity: high
+tactics: [TA0040]
+attrs: [action]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    event_name           AS attr_action
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND error_code IS NULL
+    AND (
+      (
+        event_source = 's3.amazonaws.com'
+        AND event_name = 'PutBucketVersioning'
+        AND {{ json(request_parameters, '$.VersioningConfiguration.Status') }} = 'Suspended'
+      )
+      OR (
+        event_source = 'backup.amazonaws.com'
+        AND event_name IN ('DeleteBackupVault', 'DeleteRecoveryPoint', 'DeleteBackupPlan')
+      )
+      OR (
+        event_source = 'rds.amazonaws.com'
+        AND event_name = 'ModifyDBInstance'
+        AND {{ json(request_parameters, '$.backupRetentionPeriod') }} = '0'
+      )
+    )

@@ -1,0 +1,42 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "s3.amazonaws.com",
+      "eventName": "PutBucketLifecycle",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "aws-cli/2.15.0",
+      "requestParameters": {
+        "bucketName": "customer-data",
+        "lifecycle": [
+          ""
+        ],
+        "host": [
+          "customer-data.s3.amazonaws.com"
+        ],
+        "LifecycleConfiguration": {
+          "xmlns": "http://s3.amazonaws.com/doc/2006-03-01/",
+          "Rule": {
+            "ID": "expire-all",
+            "Status": "Enabled",
+            "Filter": {
+              "Prefix": ""
+            },
+            "Expiration": {
+              "Days": 1
+            }
+          }
+        }
+      }
+    }
+  ]
+}
