@@ -1,0 +1,292 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T10:20:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T10:40:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T11:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T11:20:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T11:40:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T12:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T12:20:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T12:40:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T13:00:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T13:20:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    },
+    {
+      "eventTime": "2026-10-01T13:40:00Z",
+      "eventSource": "signin.amazonaws.com",
+      "eventName": "ConsoleLogin",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "accountId": "111111111111",
+        "accessKeyId": "",
+        "userName": "HIDDEN_DUE_TO_SECURITY_REASONS"
+      },
+      "sourceIPAddress": "198.51.100.77",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": null,
+      "recipientAccountId": "111111111111",
+      "responseElements": {
+        "ConsoleLogin": "Failure"
+      },
+      "eventType": "AwsConsoleSignIn",
+      "additionalEventData": {
+        "MFAUsed": "No"
+      },
+      "errorMessage": "Failed authentication"
+    }
+  ]
+}

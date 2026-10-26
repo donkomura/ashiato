@@ -1,0 +1,24 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "iam.amazonaws.com",
+      "eventName": "CreateServiceLinkedRole",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "Root",
+        "principalId": "111111111111",
+        "arn": "arn:aws:iam::111111111111:root",
+        "accountId": "111111111111",
+        "accessKeyId": "ASIAROOT",
+        "invokedBy": "cloudformation.amazonaws.com"
+      },
+      "sourceIPAddress": "cloudformation.amazonaws.com",
+      "userAgent": "cloudformation.amazonaws.com",
+      "requestParameters": {
+        "aWSServiceName": "autoscaling.amazonaws.com"
+      },
+      "recipientAccountId": "111111111111"
+    }
+  ]
+}

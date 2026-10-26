@@ -1,0 +1,68 @@
+kind: signal
+id: s3_bucket_public_access_granted
+title: バケットポリシーや ACL による S3 バケットの公開
+severity: high
+tactics: [TA0010]
+attrs: [bucket]
+sql: |
+  WITH changes AS (
+    SELECT *
+    FROM events
+    WHERE {{ in_analysis_window(event_time) }}
+      AND event_source = 's3.amazonaws.com'
+      AND event_name IN ('PutBucketPolicy', 'PutBucketAcl')
+      AND error_code IS NULL
+  ),
+  statements AS (
+    SELECT event_id, {{ json(request_parameters, '$.bucketPolicy.Statement') }} AS statement
+    FROM changes WHERE event_name = 'PutBucketPolicy'
+    UNION ALL
+    SELECT event_id, {{ json(request_parameters, '$.bucketPolicy.Statement[0]') }}
+    FROM changes WHERE event_name = 'PutBucketPolicy'
+    UNION ALL
+    SELECT event_id, {{ json(request_parameters, '$.bucketPolicy.Statement[1]') }}
+    FROM changes WHERE event_name = 'PutBucketPolicy'
+    UNION ALL
+    SELECT event_id, {{ json(request_parameters, '$.bucketPolicy.Statement[2]') }}
+    FROM changes WHERE event_name = 'PutBucketPolicy'
+    UNION ALL
+    SELECT event_id, {{ json(request_parameters, '$.bucketPolicy.Statement[3]') }}
+    FROM changes WHERE event_name = 'PutBucketPolicy'
+    UNION ALL
+    SELECT event_id, {{ json(request_parameters, '$.bucketPolicy.Statement[4]') }}
+    FROM changes WHERE event_name = 'PutBucketPolicy'
+  ),
+  public_policies AS (
+    SELECT DISTINCT event_id
+    FROM statements
+    WHERE {{ json(statement, '$.Effect') }} = 'Allow'
+      AND {{ json(statement, '$.Condition') }} IS NULL
+      AND (
+        {{ json(statement, '$.Principal') }} = '*'
+        OR {{ json(statement, '$.Principal.AWS') }} = '*'
+      )
+  )
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region,
+    {{ json(request_parameters, '$.bucketName') }} AS attr_bucket
+  FROM changes
+  WHERE event_id IN (SELECT event_id FROM public_policies)
+    OR (
+      event_name = 'PutBucketAcl'
+      AND (
+        strpos(cast(request_parameters AS VARCHAR), 'acs.amazonaws.com/groups/global/AllUsers') > 0
+        OR strpos(cast(request_parameters AS VARCHAR), 'acs.amazonaws.com/groups/global/AuthenticatedUsers') > 0
+        OR {{ json(request_parameters, '$."x-amz-acl"[0]') }} IN (
+          'public-read',
+          'public-read-write',
+          'authenticated-read'
+        )
+      )
+    )
