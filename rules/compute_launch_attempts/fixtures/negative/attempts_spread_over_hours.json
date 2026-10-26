@@ -1,0 +1,694 @@
+{
+  "Records": [
+    {
+      "eventTime": "2026-10-01T10:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p2.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T10:06:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T10:12:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "i3.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T10:18:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "m5d.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T10:24:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "c5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T10:30:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "r5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T10:36:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p2.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T10:42:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T10:48:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "i3.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T10:54:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "m5d.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T11:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "c5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T11:06:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "r5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T11:12:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p2.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T11:18:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T11:24:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "i3.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T11:30:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "m5d.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T11:36:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "c5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T11:42:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "r5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T11:48:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p2.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T11:54:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T12:00:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "i3.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T12:06:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "m5d.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T12:12:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "c5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T12:18:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "r5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T12:24:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p2.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T12:30:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "p3.16xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T12:36:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "i3.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    },
+    {
+      "eventTime": "2026-10-01T12:42:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "m5d.metal",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.UnauthorizedOperation",
+      "errorMessage": "You are not authorized to perform this operation."
+    },
+    {
+      "eventTime": "2026-10-01T12:48:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "c5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Client.RequestLimitExceeded",
+      "errorMessage": "Request limit exceeded."
+    },
+    {
+      "eventTime": "2026-10-01T12:54:00Z",
+      "eventSource": "ec2.amazonaws.com",
+      "eventName": "RunInstances",
+      "readOnly": false,
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "userName": "alice",
+        "accessKeyId": "AKIAALICE"
+      },
+      "sourceIPAddress": "203.0.113.99",
+      "userAgent": "Boto3/1.9.201 Python/2.7.12",
+      "requestParameters": {
+        "instanceType": "r5.24xlarge",
+        "minCount": 1,
+        "maxCount": 1
+      },
+      "errorCode": "Server.InsufficientInstanceCapacity",
+      "errorMessage": "We currently do not have sufficient capacity."
+    }
+  ]
+}
