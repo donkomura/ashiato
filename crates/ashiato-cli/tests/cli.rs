@@ -3,7 +3,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use ashiato_core::record::RecordBuilder;
+use ashiato_testkit::record::RecordBuilder;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::json;

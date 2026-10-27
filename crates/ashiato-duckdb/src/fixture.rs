@@ -2,10 +2,11 @@ use std::fmt;
 
 use ashiato_core::AnalysisWindow;
 use ashiato_core::analysis::{AnalysisError, analyze, skipped_rules};
-use ashiato_core::fixture::{Expectation, Fixture, fixture_window};
+use ashiato_core::fixture::fixture_window;
 use ashiato_core::query::QueryBackend;
 use ashiato_core::query::query_signal_rule;
 use ashiato_core::rule::{Rule, Rules, SignalRule};
+use ashiato_testkit::fixture::{Expectation, Fixture};
 
 use crate::{DuckDbBackend, EventStore, IngestError};
 

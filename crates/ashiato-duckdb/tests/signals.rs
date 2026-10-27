@@ -7,9 +7,9 @@ use ashiato_core::macros::Dialect;
 use ashiato_core::query::{
     BackendError, DataAvailability, QueryBackend, SignalQueryError, query_signal_rule,
 };
-use ashiato_core::record::RecordBuilder;
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
+use ashiato_testkit::record::RecordBuilder;
 use chrono::{DateTime, TimeDelta, Utc};
 use flate2::Compression;
 use flate2::write::GzEncoder;

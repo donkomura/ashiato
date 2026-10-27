@@ -15,6 +15,7 @@ workspace = true
 [dependencies]
 anyhow = "1.0.104"
 ashiato-core = { version = "0.1.0", path = "../ashiato-core" }
+ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
 ashiato-duckdb = { version = "0.1.0", path = "../ashiato-duckdb" }
 async-trait = "0.1.92"
 aws-config = { version = "1.13.0", features = ["behavior-version-latest"] }

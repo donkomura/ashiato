@@ -4,9 +4,9 @@ use std::io::Write;
 
 use ashiato_core::AnalysisWindow;
 use ashiato_core::query::query_signal_rule;
-use ashiato_core::record::RecordBuilder;
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
+use ashiato_testkit::record::RecordBuilder;
 use chrono::TimeDelta;
 use flate2::Compression;
 use flate2::write::GzEncoder;

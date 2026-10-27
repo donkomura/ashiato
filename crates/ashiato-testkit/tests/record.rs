@@ -1,4 +1,4 @@
-use ashiato_core::record::{RecordBuilder, RecordError, complete_record};
+use ashiato_testkit::record::{RecordBuilder, RecordError, complete_record};
 use serde_json::{Value, json};
 
 const REQUIRED_STRING_FIELDS: [&str; 8] = [

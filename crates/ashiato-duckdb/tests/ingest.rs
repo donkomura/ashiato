@@ -3,8 +3,8 @@ use std::io::Write;
 use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 
-use ashiato_core::record::RecordBuilder;
 use ashiato_duckdb::{EventStore, IngestSummary};
+use ashiato_testkit::record::RecordBuilder;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Value, json};

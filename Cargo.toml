@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/ashiato-core", "crates/ashiato-duckdb", "crates/ashiato-cli"]
+members = [
+    "crates/ashiato-core",
+    "crates/ashiato-testkit",
+    "crates/ashiato-duckdb",
+    "crates/ashiato-cli",
+]
 
 [workspace.package]
 version = "0.1.0"

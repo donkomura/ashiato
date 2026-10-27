@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
-use ashiato_core::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules};
@@ -15,6 +14,7 @@ use ashiato_core::validate::validate;
 use ashiato_core::{AnalysisWindow, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
+use ashiato_testkit::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta, Utc};
 use clap::{Parser, Subcommand};
 

@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 
 use crate::{Duration, Severity, Tactic};
 
-pub(crate) static BUILTIN_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../rules");
+static BUILTIN_RULES: Dir = include_dir!("$CARGO_MANIFEST_DIR/../../rules");
 
 const BUILTIN_RULE_SOURCE_ID: &str = "builtin";
 
@@ -244,10 +244,20 @@ impl Rules {
     }
 }
 
+pub fn builtin_files(extension: &str) -> Vec<RuleFile> {
+    let mut files = Vec::new();
+    collect_files(&BUILTIN_RULES, extension, &mut files);
+    files
+}
+
 pub(crate) fn collect_yaml_files(dir: &Dir<'_>, files: &mut Vec<RuleFile>) {
+    collect_files(dir, ".yaml", files);
+}
+
+fn collect_files(dir: &Dir<'_>, extension: &str, files: &mut Vec<RuleFile>) {
     for file in dir.files() {
         let path = file.path().to_string_lossy();
-        if !path.ends_with(".yaml") {
+        if !path.ends_with(extension) {
             continue;
         }
         if let Some(content) = file.contents_utf8() {
@@ -258,7 +268,7 @@ pub(crate) fn collect_yaml_files(dir: &Dir<'_>, files: &mut Vec<RuleFile>) {
         }
     }
     for child in dir.dirs() {
-        collect_yaml_files(child, files);
+        collect_files(child, extension, files);
     }
 }
 

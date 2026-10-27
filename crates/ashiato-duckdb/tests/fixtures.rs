@@ -1,6 +1,6 @@
-use ashiato_core::fixture::{Expectation, Fixture, FixtureFile, builtin_fixtures};
 use ashiato_core::rule::{RuleFile, RuleSource, Rules};
 use ashiato_duckdb::fixture::{Detections, FixtureReport, FixtureRunError, Verdict, run_fixture};
+use ashiato_testkit::fixture::{Expectation, Fixture, FixtureFile, builtin_fixtures};
 use serde_json::{Value, json};
 
 const CONSOLE_LOGIN: &str = r#"

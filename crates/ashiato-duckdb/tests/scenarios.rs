@@ -2,10 +2,11 @@ use std::fs::File;
 use std::io::Write;
 
 use ashiato_core::analysis::{Analysis, analyze};
-use ashiato_core::fixture::{builtin_fixtures, fixture_window};
+use ashiato_core::fixture::fixture_window;
 use ashiato_core::lineage::{Origin, OriginKind};
 use ashiato_core::rule::{RuleSource, Rules};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
+use ashiato_testkit::fixture::builtin_fixtures;
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::json;

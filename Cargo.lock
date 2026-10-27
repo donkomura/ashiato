@@ -289,6 +289,7 @@ dependencies = [
  "anyhow",
  "ashiato-core",
  "ashiato-duckdb",
+ "ashiato-testkit",
  "async-trait",
  "aws-config",
  "aws-sdk-s3",
@@ -322,6 +323,7 @@ name = "ashiato-duckdb"
 version = "0.1.0"
 dependencies = [
  "ashiato-core",
+ "ashiato-testkit",
  "async-trait",
  "chrono",
  "duckdb",
@@ -331,6 +333,17 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "ashiato-testkit"
+version = "0.1.0"
+dependencies = [
+ "ashiato-core",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

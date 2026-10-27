@@ -13,6 +13,7 @@ bundled = ["duckdb/bundled", "duckdb/json"]
 
 [dependencies]
 ashiato-core = { version = "0.1.0", path = "../ashiato-core" }
+ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
 async-trait = "0.1.92"
 chrono = "0.4.45"
 duckdb = "1.20000.0"

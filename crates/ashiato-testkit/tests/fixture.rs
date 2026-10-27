@@ -1,7 +1,6 @@
-use ashiato_core::fixture::{
-    Expectation, Fixture, FixtureError, FixtureFile, builtin_fixtures, fixture_window,
-};
-use ashiato_core::record::RecordBuilder;
+use ashiato_core::fixture::fixture_window;
+use ashiato_testkit::fixture::{Expectation, Fixture, FixtureError, FixtureFile, builtin_fixtures};
+use ashiato_testkit::record::RecordBuilder;
 use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
 
