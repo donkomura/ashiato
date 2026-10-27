@@ -6,6 +6,8 @@ use serde::{Deserialize, Serialize};
 
 pub type EventTime = DateTime<Utc>;
 
+const FILE_SEQ_BITS: u32 = 32;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PartitionId {
     pub account: String,
@@ -22,8 +24,8 @@ impl PartitionId {
 }
 
 impl fmt::Display for PartitionId {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}/{}", self.account, self.region)
     }
 }
 
@@ -47,7 +49,7 @@ impl Position {
     }
 
     pub fn next_file(self) -> Self {
-        todo!()
+        Self::new(self.file_seq + 1, 0)
     }
 }
 
@@ -87,18 +89,45 @@ pub enum PartitionMessage {
 
 impl PartitionMessage {
     pub fn partition(&self) -> &PartitionId {
-        todo!()
+        match self {
+            PartitionMessage::FileChunk { partition, .. }
+            | PartitionMessage::FileError { partition, .. }
+            | PartitionMessage::EndOfPartition { partition, .. } => partition,
+        }
     }
 
     pub fn position(&self) -> Position {
-        todo!()
+        match self {
+            PartitionMessage::FileChunk { position, .. }
+            | PartitionMessage::FileError { position, .. }
+            | PartitionMessage::EndOfPartition { position, .. } => *position,
+        }
     }
 
     pub fn end_position(&self) -> Position {
-        todo!()
+        match self {
+            PartitionMessage::FileChunk {
+                position,
+                record_count,
+                ..
+            } => Position::new(
+                position.file_seq,
+                position.record_offset + u64::from(*record_count),
+            ),
+            PartitionMessage::FileError { position, .. } => position.next_file(),
+            PartitionMessage::EndOfPartition { position, .. } => *position,
+        }
     }
 }
 
-pub fn file_id(_partition_index: u32, _file_seq: u64) -> i64 {
-    todo!()
+// file_id is derived from positions fixed by the saved manifest rather than from the order in
+// which files arrive, so that the same input gives the same file_id regardless of the placement
+// and the speed of the workers. The upper bits hold the partition and the lower bits the file.
+pub fn file_id(partition_index: u32, file_seq: u64) -> i64 {
+    assert!(
+        file_seq < 1 << FILE_SEQ_BITS,
+        "a partition holds fewer than 2^{FILE_SEQ_BITS} files"
+    );
+    let id = (u64::from(partition_index) << FILE_SEQ_BITS) | file_seq;
+    i64::try_from(id).expect("partition_index takes at most 31 bits above the file sequence")
 }
