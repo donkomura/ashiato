@@ -121,3 +121,29 @@ CREATE TABLE IF NOT EXISTS recent_event_ids (
     event_id VARCHAR NOT NULL,
     event_time TIMESTAMP NOT NULL
 );
+
+-- event_ids and attrs are JSON texts (a list of strings and an object of strings).
+CREATE TABLE IF NOT EXISTS signals (
+    rule_id VARCHAR NOT NULL,
+    batch_start TIMESTAMP NOT NULL,
+    start_time TIMESTAMP NOT NULL,
+    end_time TIMESTAMP NOT NULL,
+    event_ids VARCHAR NOT NULL,
+    access_key_id VARCHAR,
+    principal_key VARCHAR NOT NULL,
+    source_ip VARCHAR NOT NULL,
+    account_id VARCHAR NOT NULL,
+    region VARCHAR NOT NULL,
+    attrs VARCHAR NOT NULL
+);
+
+-- Rules refer to these relations by name. They are filled from the baseline period (段階 17).
+CREATE TABLE IF NOT EXISTS baseline (
+    principal_key VARCHAR,
+    dim VARCHAR,
+    value VARCHAR
+);
+
+CREATE TABLE IF NOT EXISTS baseline_principals (
+    principal_key VARCHAR
+);

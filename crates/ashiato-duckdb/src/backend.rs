@@ -81,7 +81,7 @@ impl QueryBackend for DuckDbBackend {
     }
 }
 
-fn query_signals(
+pub(crate) fn query_signals(
     connection: &duckdb::Connection,
     sql: &str,
 ) -> Result<Vec<SignalRow>, BackendError> {

@@ -13,6 +13,7 @@ use duckdb::OptionalExt;
 use duckdb::arrow::record_batch::RecordBatch;
 use duckdb::types::{TimeUnit, Value};
 
+use crate::batch_queries::{BatchQueries, BatchQueryError};
 use crate::{PipelineStore, StoreError};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,6 +50,8 @@ pub enum AnalyzerError {
     },
     #[error("partition {0} stopped sending before its end")]
     Closed(PartitionId),
+    #[error(transparent)]
+    Batch(#[from] BatchQueryError),
 }
 
 struct PartitionState {
@@ -91,6 +94,7 @@ pub struct Analyzer {
     changed: BTreeSet<usize>,
     acks: Vec<DeliveryHandle>,
     uncommitted_messages: usize,
+    queries: Option<BatchQueries>,
 }
 
 impl Analyzer {
@@ -144,15 +148,19 @@ impl Analyzer {
             changed: BTreeSet::new(),
             acks: Vec::new(),
             uncommitted_messages: 0,
+            queries: None,
         })
     }
 
-    pub fn with_queries(self, _rules: Vec<SignalRule>, _window: AnalysisWindow) -> Self {
-        todo!()
+    pub fn with_queries(self, rules: Vec<SignalRule>, window: AnalysisWindow) -> Self {
+        Self {
+            queries: Some(BatchQueries::new(rules, window)),
+            ..self
+        }
     }
 
     pub fn into_store(self) -> PipelineStore {
-        todo!()
+        self.store
     }
 
     pub fn resume_positions(&self) -> Vec<Position> {
@@ -422,6 +430,9 @@ impl Analyzer {
                 break;
             }
             let transaction = self.store.connection.transaction()?;
+            if let Some(queries) = &self.queries {
+                queries.run(&transaction, start, end)?;
+            }
             transaction.execute(
                 "DELETE FROM pending WHERE event_time >= ? AND event_time < ?",
                 [timestamp(start), timestamp(end)],

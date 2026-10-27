@@ -1,9 +1,10 @@
 use std::path::Path;
 
+use ashiato_core::SignalRow;
 use ashiato_core::lineage::LineageEdge;
 use ashiato_core::sequence::ObservedSignal;
 use ashiato_pipeline::{Manifest, ManifestEntry, PartitionId, PartitionManifest};
-use chrono::DateTime;
+use chrono::{DateTime, Utc};
 use duckdb::OptionalExt;
 use duckdb::types::{TimeUnit, Value};
 
@@ -12,6 +13,11 @@ const SELECT_MANIFEST_SQL: &str = "SELECT partition_index, account, region, file
      version_id, etag, size, epoch_us(file_time) \
      FROM manifest ORDER BY partition_index, file_seq NULLS FIRST";
 
+const SELECT_SIGNALS_SQL: &str = "SELECT rule_id, epoch_us(start_time), epoch_us(end_time), \
+     event_ids, access_key_id, principal_key, source_ip, account_id, region, attrs \
+     FROM signals \
+     ORDER BY rule_id, start_time, end_time, event_ids, access_key_id NULLS FIRST, \
+     principal_key, source_ip, account_id, region, attrs";
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error(transparent)]
@@ -23,6 +29,10 @@ pub enum StoreError {
     DigestMismatch { stored: String, given: String },
     #[error("the saved manifest is inconsistent: {0}")]
     InconsistentManifest(String),
+    #[error("a saved signal is not valid JSON")]
+    Json(#[source] serde_json::Error),
+    #[error("a saved time is out of range: {0} microseconds")]
+    TimeOutOfRange(i64),
 }
 
 pub struct PipelineStore {
@@ -77,8 +87,54 @@ impl PipelineStore {
         Ok(manifest)
     }
 
+    // Signals are read in a fixed order, so that the output does not depend on the order in
+    // which DuckDB returned the rows of a rule (streaming-pipeline.md 11).
     pub fn observed_signals(&self) -> Result<Vec<ObservedSignal>, StoreError> {
-        todo!()
+        let mut statement = self.connection.prepare(SELECT_SIGNALS_SQL)?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+                row.get::<_, String>(9)?,
+            ))
+        })?;
+        let mut signals = Vec::new();
+        for row in rows {
+            let (
+                signal_id,
+                start,
+                end,
+                event_ids,
+                access_key_id,
+                principal_key,
+                source_ip,
+                account_id,
+                region,
+                attrs,
+            ) = row?;
+            signals.push(ObservedSignal {
+                signal_id,
+                row: SignalRow {
+                    start_time: micros(start)?,
+                    end_time: micros(end)?,
+                    event_ids: serde_json::from_str(&event_ids).map_err(StoreError::Json)?,
+                    access_key_id,
+                    principal_key,
+                    source_ip,
+                    account_id,
+                    region,
+                    attrs: serde_json::from_str(&attrs).map_err(StoreError::Json)?,
+                },
+            });
+        }
+        Ok(signals)
     }
 
     pub fn lineage_edges(&self) -> Result<Vec<LineageEdge>, StoreError> {
@@ -200,4 +256,8 @@ fn inconsistent(message: String) -> StoreError {
 
 fn missing(column: &str, file_seq: u64) -> StoreError {
     inconsistent(format!("{column} of file {file_seq} is missing"))
+}
+
+fn micros(value: i64) -> Result<DateTime<Utc>, StoreError> {
+    DateTime::from_timestamp_micros(value).ok_or(StoreError::TimeOutOfRange(value))
 }
