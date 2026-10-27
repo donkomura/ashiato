@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
 
-use crate::lineage::{LineageGraph, LineageStep, LineageWarning, Origin};
+use crate::lineage::{LineageEdge, LineageGraph, LineageStep, LineageWarning, Origin};
 use crate::output::{
     RecordKind, RuleSkippedRecord, ScenarioMatchRecord, SignalEvidence, SignalRecord, SkipReason,
     StepRecord, SummaryRecord,
@@ -165,6 +165,44 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
         .query_lineage(window)
         .await
         .map_err(AnalysisError::Lineage)?;
+    Ok(correlate_available(rules, observed, edges, data))
+}
+
+pub fn correlate(
+    rules: &Rules,
+    observed: Vec<ObservedSignal>,
+    edges: Vec<LineageEdge>,
+) -> Analysis {
+    correlate_with(
+        rules,
+        observed,
+        edges,
+        DataAvailability::default(),
+        Vec::new(),
+    )
+}
+
+// Rules that need data the input does not have are left out and reported as skipped, so that
+// an empty result is not mistaken for the absence of an attack (design.md 6.5).
+pub fn correlate_available(
+    rules: &Rules,
+    observed: Vec<ObservedSignal>,
+    edges: Vec<LineageEdge>,
+    data: DataAvailability,
+) -> Analysis {
+    let skipped = skipped_rules(rules, &data);
+    correlate_with(rules, observed, edges, data, skipped)
+}
+
+fn correlate_with(
+    rules: &Rules,
+    mut observed: Vec<ObservedSignal>,
+    edges: Vec<LineageEdge>,
+    data: DataAvailability,
+    skipped: Vec<RuleSkippedRecord>,
+) -> Analysis {
+    let runnable = |id: &str| skipped.iter().all(|record| record.rule_id != id);
+    observed.retain(|signal| runnable(&signal.signal_id));
     let graph = LineageGraph::new(edges);
 
     observed.sort_by_key(|signal| signal.row.start_time);
@@ -210,7 +248,7 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
         }
     }
     analysis.skipped = skipped;
-    Ok(analysis)
+    analysis
 }
 
 pub fn skipped_rules(rules: &Rules, data: &DataAvailability) -> Vec<RuleSkippedRecord> {
