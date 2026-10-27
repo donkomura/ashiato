@@ -4,6 +4,7 @@ use ashiato_pipeline::{
     AckTiming, Admission, Delivery, DeliveryHandle, EventTime, IngestedFile, Manifest, PartitionId,
     PartitionMessage, PartitionProgress, PartitionReader, PartitionWatermark, Position,
     TransportError, admit, batch_start, file_id, global_watermark, is_batch_complete,
+    recent_event_expiry,
 };
 use chrono::TimeDelta;
 use duckdb::OptionalExt;
@@ -68,6 +69,7 @@ impl PartitionState {
 
 enum Received {
     Events {
+        partition_index: u32,
         events: RecordBatch,
         watermark: EventTime,
     },
@@ -238,7 +240,11 @@ impl Analyzer {
                             .expect("a chunk holds fewer records than usize::MAX");
                         let events = events.slice(skip, events.num_rows() - skip);
                         if events.num_rows() > 0 {
-                            self.received.push(Received::Events { events, watermark });
+                            self.received.push(Received::Events {
+                                partition_index,
+                                events,
+                                watermark,
+                            });
                         }
                         if next == position.next_file() {
                             self.received.push(Received::File {
@@ -282,7 +288,11 @@ impl Analyzer {
         let transaction = self.store.connection.transaction()?;
         for received in self.received.drain(..) {
             match received {
-                Received::Events { events, watermark } => {
+                Received::Events {
+                    partition_index,
+                    events,
+                    watermark,
+                } => {
                     {
                         let mut appender = transaction.appender("incoming")?;
                         appender.append_record_batch(events)?;
@@ -294,11 +304,28 @@ impl Analyzer {
                          FROM incoming WHERE event_time < ?",
                         [timestamp(watermark)],
                     )?;
+                    // The same event can be in both the organization trail and the account trail
+                    // of a partition. recent_event_ids is written in the same transaction as the
+                    // positions, so an event received again after a restart is not mistaken for
+                    // a duplicate of itself (8.2 節).
                     transaction.execute(
-                        "INSERT INTO pending SELECT * FROM incoming WHERE event_time >= ?",
-                        [timestamp(watermark)],
+                        "CREATE OR REPLACE TEMP TABLE accepted AS \
+                         SELECT * FROM incoming i \
+                         WHERE event_time >= ? \
+                           AND NOT EXISTS (SELECT 1 FROM recent_event_ids r \
+                                           WHERE r.partition_index = ? \
+                                             AND r.event_id = i.event_id) \
+                         QUALIFY row_number() OVER (PARTITION BY event_id \
+                                                    ORDER BY record_index) = 1",
+                        duckdb::params![timestamp(watermark), partition_index],
                     )?;
-                    transaction.execute("DELETE FROM incoming", [])?;
+                    transaction.execute("INSERT INTO pending SELECT * FROM accepted", [])?;
+                    transaction.execute(
+                        "INSERT INTO recent_event_ids \
+                         SELECT ?, event_id, event_time FROM accepted",
+                        [partition_index],
+                    )?;
+                    transaction.execute_batch("DROP TABLE accepted; DELETE FROM incoming;")?;
                 }
                 Received::File {
                     partition_index,
@@ -327,6 +354,18 @@ impl Analyzer {
         }
         for index in &self.changed {
             let partition = &self.partitions[*index];
+            if let Some(watermark) = partition.watermark {
+                transaction.execute(
+                    "DELETE FROM recent_event_ids WHERE partition_index = ? AND event_time < ?",
+                    duckdb::params![
+                        index_value(*index),
+                        timestamp(recent_event_expiry(
+                            watermark,
+                            self.settings.allowed_lateness
+                        )),
+                    ],
+                )?;
+            }
             transaction.execute(
                 "INSERT OR REPLACE INTO partition_progress VALUES (?, ?, ?, ?, ?)",
                 duckdb::params![

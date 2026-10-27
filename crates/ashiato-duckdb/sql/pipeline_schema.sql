@@ -115,3 +115,9 @@ CREATE TABLE IF NOT EXISTS batches (
     batch_start TIMESTAMP NOT NULL,
     batch_end TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS recent_event_ids (
+    partition_index UINTEGER NOT NULL,
+    event_id VARCHAR NOT NULL,
+    event_time TIMESTAMP NOT NULL
+);
