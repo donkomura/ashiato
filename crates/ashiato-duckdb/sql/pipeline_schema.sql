@@ -104,3 +104,14 @@ CREATE TABLE IF NOT EXISTS partition_progress (
     watermark TIMESTAMP,
     ended BOOLEAN NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS late_events (
+    event_id VARCHAR NOT NULL,
+    file_id BIGINT NOT NULL,
+    record_index BIGINT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS batches (
+    batch_start TIMESTAMP NOT NULL,
+    batch_end TIMESTAMP NOT NULL
+);

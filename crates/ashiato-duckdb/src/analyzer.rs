@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 
 use ashiato_pipeline::{
     AckTiming, Admission, Delivery, DeliveryHandle, EventTime, IngestedFile, Manifest, PartitionId,
-    PartitionMessage, PartitionProgress, PartitionReader, Position, TransportError, admit, file_id,
+    PartitionMessage, PartitionProgress, PartitionReader, PartitionWatermark, Position,
+    TransportError, admit, batch_start, file_id, global_watermark, is_batch_complete,
 };
 use chrono::TimeDelta;
 use duckdb::OptionalExt;
@@ -52,11 +53,23 @@ struct PartitionState {
     file_count: u64,
     progress: PartitionProgress,
     watermark: Option<EventTime>,
+    committed_watermark: Option<EventTime>,
+}
+
+impl PartitionState {
+    fn committed_watermark(&self) -> PartitionWatermark {
+        match (self.progress.end_committed, self.committed_watermark) {
+            (true, _) => PartitionWatermark::Ended,
+            (false, None) => PartitionWatermark::NotStarted,
+            (false, Some(watermark)) => PartitionWatermark::At(watermark),
+        }
+    }
 }
 
 enum Received {
     Events {
         events: RecordBatch,
+        watermark: EventTime,
     },
     File {
         partition_index: u32,
@@ -116,6 +129,7 @@ impl Analyzer {
                 id: partition.partition,
                 progress,
                 watermark,
+                committed_watermark: watermark,
             });
         }
         Ok(Self {
@@ -224,7 +238,7 @@ impl Analyzer {
                             .expect("a chunk holds fewer records than usize::MAX");
                         let events = events.slice(skip, events.num_rows() - skip);
                         if events.num_rows() > 0 {
-                            self.received.push(Received::Events { events });
+                            self.received.push(Received::Events { events, watermark });
                         }
                         if next == position.next_file() {
                             self.received.push(Received::File {
@@ -268,14 +282,23 @@ impl Analyzer {
         let transaction = self.store.connection.transaction()?;
         for received in self.received.drain(..) {
             match received {
-                Received::Events { events } => {
+                Received::Events { events, watermark } => {
                     {
                         let mut appender = transaction.appender("incoming")?;
                         appender.append_record_batch(events)?;
                     }
-                    transaction.execute_batch(
-                        "INSERT INTO pending SELECT * FROM incoming; DELETE FROM incoming;",
+                    // Whether an event is late depends only on its own time and the watermark of
+                    // its file, so the result does not change with the order of arrival (11 節).
+                    transaction.execute(
+                        "INSERT INTO late_events SELECT event_id, file_id, record_index \
+                         FROM incoming WHERE event_time < ?",
+                        [timestamp(watermark)],
                     )?;
+                    transaction.execute(
+                        "INSERT INTO pending SELECT * FROM incoming WHERE event_time >= ?",
+                        [timestamp(watermark)],
+                    )?;
+                    transaction.execute("DELETE FROM incoming", [])?;
                 }
                 Received::File {
                     partition_index,
@@ -317,16 +340,51 @@ impl Analyzer {
         }
         transaction.commit()?;
         for index in std::mem::take(&mut self.changed) {
-            let progress = &mut self.partitions[index].progress;
-            progress.committed = progress.next;
-            progress.end_committed = progress.ended;
+            let partition = &mut self.partitions[index];
+            partition.progress.committed = partition.progress.next;
+            partition.progress.end_committed = partition.progress.ended;
+            partition.committed_watermark = partition.watermark;
         }
         self.uncommitted_messages = 0;
         Ok(std::mem::take(&mut self.acks))
     }
 
     pub fn finalize_batches(&mut self) -> Result<Vec<(EventTime, EventTime)>, AnalyzerError> {
-        todo!()
+        let global = global_watermark(
+            self.partitions
+                .iter()
+                .map(PartitionState::committed_watermark),
+            self.settings.read_since,
+            self.settings.allowed_lateness,
+        );
+        let mut finalized = Vec::new();
+        loop {
+            let earliest: Option<i64> = self.store.connection.query_row(
+                "SELECT epoch_us(min(event_time)) FROM pending",
+                [],
+                |row| row.get(0),
+            )?;
+            let Some(earliest) = earliest.and_then(EventTime::from_timestamp_micros) else {
+                break;
+            };
+            let start = batch_start(earliest, self.settings.batch);
+            let end = start + self.settings.batch;
+            if !is_batch_complete(end, global) {
+                break;
+            }
+            let transaction = self.store.connection.transaction()?;
+            transaction.execute(
+                "DELETE FROM pending WHERE event_time >= ? AND event_time < ?",
+                [timestamp(start), timestamp(end)],
+            )?;
+            transaction.execute(
+                "INSERT INTO batches VALUES (?, ?)",
+                [timestamp(start), timestamp(end)],
+            )?;
+            transaction.commit()?;
+            finalized.push((start, end));
+        }
+        Ok(finalized)
     }
 
     pub async fn run<R: PartitionReader + ?Sized>(
@@ -337,9 +395,12 @@ impl Analyzer {
             self.receive(reader).await?;
             if self.uncommitted_messages >= self.settings.commit_every {
                 self.commit_and_ack(reader).await?;
+                self.finalize_batches()?;
             }
         }
-        self.commit_and_ack(reader).await
+        self.commit_and_ack(reader).await?;
+        self.finalize_batches()?;
+        Ok(())
     }
 
     async fn commit_and_ack<R: PartitionReader + ?Sized>(
