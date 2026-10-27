@@ -341,10 +341,14 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
+ "ashiato-core",
  "async-trait",
  "chrono",
  "serde",
  "serde_json",
+ "serde_yaml",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
 ]
