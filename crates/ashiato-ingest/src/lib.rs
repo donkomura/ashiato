@@ -1,4 +1,5 @@
 mod local;
+mod normalize;
 mod worker;
 
 pub use local::{ListError, ListScope, LocalListing, list_local};
