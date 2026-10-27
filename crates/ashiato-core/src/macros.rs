@@ -7,6 +7,7 @@ use crate::{AnalysisWindow, Duration, DurationError, DurationUnit};
 
 const OPEN: &str = "{{";
 const CLOSE: &str = "}}";
+const FALSE: &str = "FALSE";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dialect {
@@ -229,19 +230,32 @@ fn render_duckdb(call: &Call, context: &MacroContext<'_>) -> Result<String, Macr
         }
         "in_analysis_window" => {
             let [column] = args(call)?;
-            Ok(range(
-                column_arg(call, column)?,
-                context.window.since(),
-                context.window.until(),
-            ))
+            let column = column_arg(call, column)?;
+            let (since, until) = (context.window.since(), context.window.until());
+            Ok(match context.scope {
+                WindowScope::Whole => range(column, since, until),
+                WindowScope::Batch { start, end } => {
+                    let (since, until) = (since.max(start), until.min(end));
+                    if since < until {
+                        range(column, since, until)
+                    } else {
+                        FALSE.to_owned()
+                    }
+                }
+            })
         }
         "in_baseline_window" => {
             let [column] = args(call)?;
-            Ok(range(
-                column_arg(call, column)?,
-                context.window.baseline_since(),
-                context.window.baseline_until(),
-            ))
+            let column = column_arg(call, column)?;
+            Ok(match context.scope {
+                WindowScope::Whole => range(
+                    column,
+                    context.window.baseline_since(),
+                    context.window.baseline_until(),
+                ),
+                // The pipeline keeps the baseline in its own table instead (streaming-pipeline.md 8.5).
+                WindowScope::Batch { .. } => FALSE.to_owned(),
+            })
         }
         "param" => {
             let [name] = args(call)?;

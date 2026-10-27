@@ -102,11 +102,7 @@ pub async fn query_signal_rule<B: QueryBackend + ?Sized>(
         scope: WindowScope::Whole,
         params: &rule.params,
     };
-    let sql =
-        expand(&with_baseline(&rule.sql), &context).map_err(|source| SignalQueryError::Macro {
-            rule_id: rule.id.clone(),
-            source,
-        })?;
+    let sql = expand_rule_sql(rule, &with_baseline(&rule.sql), &context)?;
     backend
         .query_signals(&sql)
         .await
@@ -116,14 +112,36 @@ pub async fn query_signal_rule<B: QueryBackend + ?Sized>(
         })
 }
 
+// The pipeline keeps baseline and baseline_principals as tables (streaming-pipeline.md 8.5),
+// so the baseline CTEs are not added here.
 pub fn batch_signal_sql(
-    _rule: &SignalRule,
-    _dialect: Dialect,
-    _window: &AnalysisWindow,
-    _batch_start: DateTime<Utc>,
-    _batch_end: DateTime<Utc>,
+    rule: &SignalRule,
+    dialect: Dialect,
+    window: &AnalysisWindow,
+    batch_start: DateTime<Utc>,
+    batch_end: DateTime<Utc>,
 ) -> Result<String, SignalQueryError> {
-    todo!()
+    let context = MacroContext {
+        dialect,
+        window,
+        scope: WindowScope::Batch {
+            start: batch_start,
+            end: batch_end,
+        },
+        params: &rule.params,
+    };
+    expand_rule_sql(rule, &rule.sql, &context)
+}
+
+fn expand_rule_sql(
+    rule: &SignalRule,
+    sql: &str,
+    context: &MacroContext<'_>,
+) -> Result<String, SignalQueryError> {
+    expand(sql, context).map_err(|source| SignalQueryError::Macro {
+        rule_id: rule.id.clone(),
+        source,
+    })
 }
 
 fn with_baseline(sql: &str) -> String {
