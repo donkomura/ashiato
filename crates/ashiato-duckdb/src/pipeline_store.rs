@@ -43,6 +43,13 @@ pub enum StoreError {
     TimeOutOfRange(i64),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct IngestCounts {
+    pub ingested_files: u64,
+    pub file_errors: u64,
+    pub late_events: u64,
+}
+
 pub struct PipelineStore {
     pub(crate) connection: duckdb::Connection,
 }
@@ -171,6 +178,23 @@ impl PipelineStore {
             })
         })?;
         Ok(edges.collect::<Result<_, _>>()?)
+    }
+
+    pub fn ingest_counts(&self) -> Result<IngestCounts, StoreError> {
+        Ok(self.connection.query_row(
+            "SELECT \
+                 (SELECT count(*) FROM ingested_files WHERE error IS NULL), \
+                 (SELECT count(*) FROM ingested_files WHERE error IS NOT NULL), \
+                 (SELECT count(*) FROM late_events)",
+            [],
+            |row| {
+                Ok(IngestCounts {
+                    ingested_files: row.get(0)?,
+                    file_errors: row.get(1)?,
+                    late_events: row.get(2)?,
+                })
+            },
+        )?)
     }
 
     fn stored_digest(&self) -> Result<Option<String>, StoreError> {

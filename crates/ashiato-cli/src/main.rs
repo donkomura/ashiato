@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, bail};
 use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
+use ashiato_core::analysis::Analysis;
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules};
@@ -17,6 +18,8 @@ use ashiato_duckdb::{DuckDbBackend, EventStore};
 use ashiato_testkit::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta, Utc};
 use clap::{Parser, Subcommand};
+
+mod run;
 
 const DATABASE_FILE: &str = "ashiato.duckdb";
 const EVIDENCE_DIR: &str = "evidence";
@@ -35,6 +38,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+    Run(run::RunArgs),
     Ingest(IngestArgs),
     Analyze(AnalyzeArgs),
     Rules {
@@ -124,6 +128,7 @@ struct AnalyzeArgs {
 
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
+        Command::Run(args) => run::run(&args),
         Command::Ingest(args) => ingest(&args),
         Command::Analyze(args) => analyze(&args),
         Command::Rules {
@@ -231,24 +236,34 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         analysis.retain_severities(&args.severity);
     }
 
-    let mut sink = JsonLinesSink::new(BufWriter::new(io::stdout().lock()));
-    sink.write(&OutputRecord::Run(RunRecord {
+    let run = OutputRecord::Run(RunRecord {
         tool_version: env!("CARGO_PKG_VERSION").to_owned(),
         since: window.since(),
         until: window.until(),
         rule_sources: selection.rules.rule_sources().to_vec(),
         rulesets: selection.rulesets,
         data: analysis.data,
-    }))?;
+    });
+    write_output(&run, analysis, args.emit_signals, args.summary)
+}
+
+fn write_output(
+    run: &OutputRecord,
+    analysis: Analysis,
+    emit_signals: bool,
+    summary: bool,
+) -> anyhow::Result<()> {
+    let mut sink = JsonLinesSink::new(BufWriter::new(io::stdout().lock()));
+    sink.write(run)?;
     for skipped in &analysis.skipped {
         sink.write(&OutputRecord::RuleSkipped(skipped.clone()))?;
     }
-    if args.summary {
+    if summary {
         for summary in analysis.summarize() {
             sink.write(&OutputRecord::Summary(summary))?;
         }
     } else {
-        if args.emit_signals {
+        if emit_signals {
             for signal in analysis.signals {
                 sink.write(&OutputRecord::Signal(signal))?;
             }
@@ -366,7 +381,11 @@ struct Catalog {
 }
 
 fn load_catalog(args: &CatalogArgs) -> anyhow::Result<Catalog> {
-    let sources = rule_sources(args.rules.as_deref())?;
+    load_catalog_from(args.rules.as_slice(), args.rulesets.as_slice())
+}
+
+fn load_catalog_from(rule_dirs: &[PathBuf], ruleset_dirs: &[PathBuf]) -> anyhow::Result<Catalog> {
+    let sources = rule_sources(rule_dirs)?;
     let custom_rule_ids: BTreeSet<String> = sources[1..]
         .iter()
         .flat_map(RuleSource::rules)
@@ -374,7 +393,7 @@ fn load_catalog(args: &CatalogArgs) -> anyhow::Result<Catalog> {
         .collect();
     let rules = Rules::new(sources)?;
     let mut rulesets = Rulesets::builtin()?;
-    if let Some(dir) = &args.rulesets {
+    for dir in ruleset_dirs {
         rulesets.extend(load_rulesets(dir)?);
     }
     let unlisted: Vec<String> = rulesets
@@ -399,9 +418,9 @@ fn load_rulesets(dir: &Path) -> anyhow::Result<Rulesets> {
     Ok(Rulesets::parse(files)?)
 }
 
-fn rule_sources(dir: Option<&Path>) -> anyhow::Result<Vec<RuleSource>> {
+fn rule_sources(dirs: &[PathBuf]) -> anyhow::Result<Vec<RuleSource>> {
     let mut sets = vec![RuleSource::builtin()?];
-    if let Some(dir) = dir {
+    for dir in dirs {
         sets.push(load_rule_source(dir)?);
     }
     Ok(sets)

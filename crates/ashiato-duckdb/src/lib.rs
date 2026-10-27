@@ -16,7 +16,7 @@ mod pipeline_store;
 pub use analyzer::{Analyzer, AnalyzerError, AnalyzerSettings};
 pub use backend::DuckDbBackend;
 pub use batch_queries::BatchQueryError;
-pub use pipeline_store::{PipelineStore, StoreError};
+pub use pipeline_store::{IngestCounts, PipelineStore, StoreError};
 
 const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
 const STAGE_RECORDS_SQL: &str = include_str!("../sql/stage_records.sql");

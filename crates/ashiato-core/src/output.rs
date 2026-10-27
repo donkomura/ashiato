@@ -14,6 +14,8 @@ use crate::{Severity, SignalRow, Tactic};
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OutputRecord {
     Run(RunRecord),
+    #[serde(rename = "run")]
+    PipelineRun(PipelineRunRecord),
     RuleSkipped(RuleSkippedRecord),
     Signal(SignalRecord),
     ScenarioMatch(ScenarioMatchRecord),
@@ -41,6 +43,19 @@ pub struct RuleSkippedRecord {
 #[serde(rename_all = "snake_case")]
 pub enum SkipReason {
     MissingData,
+}
+
+// The run record of `run`, which adds what the pipeline read to the run record of `analyze`
+// (streaming-pipeline.md 8.8). Values that depend on wall-clock time are left out so that the
+// same input gives the same output.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct PipelineRunRecord {
+    #[serde(flatten)]
+    pub run: RunRecord,
+    pub plan_digest: String,
+    pub ingested_files: u64,
+    pub file_errors: u64,
+    pub late_events: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
