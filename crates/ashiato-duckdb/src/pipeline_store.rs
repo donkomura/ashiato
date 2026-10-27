@@ -24,7 +24,7 @@ pub enum StoreError {
 }
 
 pub struct PipelineStore {
-    connection: duckdb::Connection,
+    pub(crate) connection: duckdb::Connection,
 }
 
 struct ManifestRow {
