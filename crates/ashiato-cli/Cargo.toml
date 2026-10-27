@@ -17,6 +17,8 @@ anyhow = "1.0.104"
 ashiato-core = { version = "0.1.0", path = "../ashiato-core" }
 ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
 ashiato-duckdb = { version = "0.1.0", path = "../ashiato-duckdb" }
+ashiato-ingest = { version = "0.1.0", path = "../ashiato-ingest" }
+ashiato-pipeline = { version = "0.1.0", path = "../ashiato-pipeline" }
 async-trait = "0.1.92"
 aws-config = { version = "1.13.0", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "1.155.0"
