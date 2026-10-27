@@ -13,10 +13,20 @@ pub enum Dialect {
     DuckDb,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WindowScope {
+    Whole,
+    Batch {
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+    },
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct MacroContext<'a> {
     pub dialect: Dialect,
     pub window: &'a AnalysisWindow,
+    pub scope: WindowScope,
     pub params: &'a BTreeMap<String, Value>,
 }
 

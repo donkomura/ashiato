@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use ashiato_core::macros::{Dialect, MacroContext, MacroError, expand};
+use ashiato_core::macros::{Dialect, MacroContext, MacroError, WindowScope, expand};
 use ashiato_core::{AnalysisWindow, DurationError};
 use chrono::TimeDelta;
 use serde_json::{Value, json};
@@ -15,6 +15,14 @@ fn window() -> AnalysisWindow {
 }
 
 fn expand_with(sql: &str, params: &[(&str, Value)]) -> Result<String, MacroError> {
+    expand_in(sql, WindowScope::Whole, params)
+}
+
+fn expand_in(
+    sql: &str,
+    scope: WindowScope,
+    params: &[(&str, Value)],
+) -> Result<String, MacroError> {
     let window = window();
     let params: BTreeMap<String, Value> = params
         .iter()
@@ -25,6 +33,7 @@ fn expand_with(sql: &str, params: &[(&str, Value)]) -> Result<String, MacroError
         &MacroContext {
             dialect: Dialect::DuckDb,
             window: &window,
+            scope,
             params: &params,
         },
     )
@@ -32,6 +41,17 @@ fn expand_with(sql: &str, params: &[(&str, Value)]) -> Result<String, MacroError
 
 fn expand_ok(sql: &str) -> String {
     expand_with(sql, &[]).unwrap()
+}
+
+fn batch(start: &str, end: &str) -> WindowScope {
+    WindowScope::Batch {
+        start: start.parse().unwrap(),
+        end: end.parse().unwrap(),
+    }
+}
+
+fn expand_in_batch(sql: &str, start: &str, end: &str) -> String {
+    expand_in(sql, batch(start, end), &[]).unwrap()
 }
 
 #[test]
@@ -296,4 +316,143 @@ fn signal_sql_from_design_document_expands_completely() {
   HAVING count(*) >= 3
 "#
     );
+}
+
+#[test]
+fn in_analysis_window_macro_expands_to_the_batch_inside_the_analysis_window() {
+    assert_eq!(
+        expand_in_batch(
+            "WHERE {{ in_analysis_window(event_time) }}",
+            "2026-10-01T03:00:00Z",
+            "2026-10-01T04:00:00Z",
+        ),
+        "WHERE (event_time >= TIMESTAMP '2026-10-01 03:00:00' \
+         AND event_time < TIMESTAMP '2026-10-01 04:00:00')"
+    );
+}
+
+#[test]
+fn in_analysis_window_macro_cuts_the_batch_at_the_start_of_the_analysis_window() {
+    assert_eq!(
+        expand_in_batch(
+            "WHERE {{ in_analysis_window(e.event_time) }}",
+            "2026-09-23T23:00:00Z",
+            "2026-09-24T01:00:00Z",
+        ),
+        "WHERE (e.event_time >= TIMESTAMP '2026-09-24 00:00:00' \
+         AND e.event_time < TIMESTAMP '2026-09-24 01:00:00')"
+    );
+}
+
+#[test]
+fn in_analysis_window_macro_cuts_the_batch_at_the_end_of_the_analysis_window() {
+    assert_eq!(
+        expand_in_batch(
+            "WHERE {{ in_analysis_window(event_time) }}",
+            "2026-10-24T23:00:00Z",
+            "2026-10-25T01:00:00Z",
+        ),
+        "WHERE (event_time >= TIMESTAMP '2026-10-24 23:00:00' \
+         AND event_time < TIMESTAMP '2026-10-25 00:00:00')"
+    );
+}
+
+#[test]
+fn in_analysis_window_macro_cuts_a_batch_longer_than_the_analysis_window_at_both_ends() {
+    assert_eq!(
+        expand_in_batch(
+            "WHERE {{ in_analysis_window(event_time) }}",
+            "2026-09-01T00:00:00Z",
+            "2026-11-01T00:00:00Z",
+        ),
+        "WHERE (event_time >= TIMESTAMP '2026-09-24 00:00:00' \
+         AND event_time < TIMESTAMP '2026-10-25 00:00:00')"
+    );
+}
+
+#[test]
+fn in_analysis_window_macro_expands_to_false_for_a_batch_outside_the_analysis_window() {
+    for (start, end) in [
+        ("2026-09-01T00:00:00Z", "2026-09-01T01:00:00Z"),
+        ("2026-09-23T23:00:00Z", "2026-09-24T00:00:00Z"),
+        ("2026-10-25T00:00:00Z", "2026-10-25T01:00:00Z"),
+        ("2026-11-01T00:00:00Z", "2026-11-01T01:00:00Z"),
+    ] {
+        assert_eq!(
+            expand_in_batch("WHERE {{ in_analysis_window(event_time) }}", start, end),
+            "WHERE FALSE",
+            "{start} - {end}"
+        );
+    }
+}
+
+#[test]
+fn in_baseline_window_macro_expands_to_false_in_a_batch() {
+    for (start, end) in [
+        ("2026-09-01T00:00:00Z", "2026-09-01T01:00:00Z"),
+        ("2026-10-01T00:00:00Z", "2026-10-01T01:00:00Z"),
+    ] {
+        assert_eq!(
+            expand_in_batch("WHERE {{ in_baseline_window(event_time) }}", start, end),
+            "WHERE FALSE",
+            "{start} - {end}"
+        );
+    }
+}
+
+#[test]
+fn baseline_or_analysis_window_condition_is_limited_to_the_batch() {
+    assert_eq!(
+        expand_in_batch(
+            "WHERE ({{ in_baseline_window(event_time) }} OR {{ in_analysis_window(event_time) }})",
+            "2026-10-01T00:00:00Z",
+            "2026-10-01T01:00:00Z",
+        ),
+        "WHERE (FALSE OR (event_time >= TIMESTAMP '2026-10-01 00:00:00' \
+         AND event_time < TIMESTAMP '2026-10-01 01:00:00'))"
+    );
+}
+
+#[test]
+fn other_macros_expand_in_a_batch_as_in_the_whole_window() {
+    let sql = "SELECT {{ json(request_parameters, '$.bucketName') }}, \
+               {{ time_bin(event_time, param('bin')) }}, {{ param('min_deletes') }}";
+    let params = [("min_deletes", json!(3)), ("bin", json!("5m"))];
+
+    assert_eq!(
+        expand_in(
+            sql,
+            batch("2026-10-01T00:00:00Z", "2026-10-01T01:00:00Z"),
+            &params
+        )
+        .unwrap(),
+        expand_with(sql, &params).unwrap()
+    );
+    assert_eq!(
+        expand_with(sql, &params).unwrap(),
+        "SELECT json_extract_string(request_parameters, '$.bucketName'), \
+         time_bucket(INTERVAL '5 minutes', event_time), 3"
+    );
+}
+
+#[test]
+fn errors_are_reported_in_a_batch_as_in_the_whole_window() {
+    assert_eq!(
+        expand_in(
+            "{{ param('missing') }}",
+            batch("2026-10-01T00:00:00Z", "2026-10-01T01:00:00Z"),
+            &[]
+        ),
+        Err(MacroError::UndefinedParam {
+            name: "missing".to_owned()
+        })
+    );
+    assert!(matches!(
+        expand_in(
+            "{{ in_baseline_window(event_time, 1) }}",
+            batch("2026-10-01T00:00:00Z", "2026-10-01T01:00:00Z"),
+            &[]
+        ),
+        Err(MacroError::InvalidArgument { ref name, .. }) if name == "in_baseline_window"
+    ));
 }

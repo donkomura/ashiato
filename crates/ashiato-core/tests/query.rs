@@ -4,12 +4,13 @@ use std::sync::Mutex;
 use ashiato_core::lineage::LineageEdge;
 use ashiato_core::macros::{Dialect, MacroError};
 use ashiato_core::query::{
-    BackendError, DataAvailability, QueryBackend, SignalQueryError, query_signal_rule,
+    BackendError, DataAvailability, QueryBackend, SignalQueryError, batch_signal_sql,
+    query_signal_rule,
 };
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
 use ashiato_core::{AnalysisWindow, SignalRow};
 use async_trait::async_trait;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 
 struct FakeBackend {
     received_sql: Mutex<Vec<String>>,
@@ -223,4 +224,90 @@ async fn query_signal_rule_reports_backend_errors_with_the_rule_id() {
         "unexpected error: {error:?}"
     );
     assert!(error.to_string().contains("test_signal"));
+}
+
+fn at(time: &str) -> DateTime<Utc> {
+    time.parse().unwrap()
+}
+
+fn batch_sql(rule: &SignalRule, start: &str, end: &str) -> Result<String, SignalQueryError> {
+    batch_signal_sql(rule, Dialect::DuckDb, &window(), at(start), at(end))
+}
+
+#[test]
+fn batch_signal_sql_expands_the_macros_within_the_batch() {
+    let rule = signal_rule(
+        "SELECT * FROM events\n\
+         WHERE {{ in_analysis_window(event_time) }}\n\
+         HAVING count(*) >= {{ param('min_count') }}",
+    );
+
+    let sql = batch_sql(&rule, "2026-10-01T03:00:00Z", "2026-10-01T04:00:00Z").unwrap();
+
+    assert_eq!(
+        sql,
+        "SELECT * FROM events\n\
+         WHERE (event_time >= TIMESTAMP '2026-10-01 03:00:00' \
+         AND event_time < TIMESTAMP '2026-10-01 04:00:00')\n\
+         HAVING count(*) >= 3\n"
+    );
+}
+
+#[test]
+fn batch_signal_sql_limits_the_batch_to_the_analysis_window() {
+    let rule = signal_rule("SELECT * FROM events WHERE {{ in_analysis_window(event_time) }}");
+
+    assert_eq!(
+        batch_sql(&rule, "2026-09-30T23:00:00Z", "2026-10-01T01:00:00Z").unwrap(),
+        "SELECT * FROM events WHERE (event_time >= TIMESTAMP '2026-10-01 00:00:00' \
+         AND event_time < TIMESTAMP '2026-10-01 01:00:00')\n"
+    );
+    assert_eq!(
+        batch_sql(&rule, "2026-09-15T00:00:00Z", "2026-09-15T01:00:00Z").unwrap(),
+        "SELECT * FROM events WHERE FALSE\n"
+    );
+}
+
+#[test]
+fn batch_signal_sql_does_not_add_the_baseline_ctes() {
+    for rule_sql in [
+        "SELECT * FROM baseline",
+        "SELECT * FROM events WHERE principal_key IN (SELECT principal_key FROM baseline_principals)",
+        "with recent AS (SELECT 1)\nSELECT * FROM recent",
+    ] {
+        let rule = signal_rule(rule_sql);
+
+        let sql = batch_sql(&rule, "2026-10-01T00:00:00Z", "2026-10-01T01:00:00Z").unwrap();
+
+        assert_eq!(sql, format!("{rule_sql}\n"));
+    }
+}
+
+#[test]
+fn batch_signal_sql_expands_in_baseline_window_to_false() {
+    let rule = signal_rule("SELECT * FROM events WHERE {{ in_baseline_window(event_time) }}");
+
+    assert_eq!(
+        batch_sql(&rule, "2026-09-15T00:00:00Z", "2026-09-15T01:00:00Z").unwrap(),
+        "SELECT * FROM events WHERE FALSE\n"
+    );
+}
+
+#[test]
+fn batch_signal_sql_reports_macro_errors_with_the_rule_id() {
+    let rule = signal_rule("SELECT {{ param('undefined') }}");
+
+    let error = batch_sql(&rule, "2026-10-01T00:00:00Z", "2026-10-01T01:00:00Z").unwrap_err();
+
+    assert_eq!(error.rule_id(), "test_signal");
+    assert!(
+        matches!(
+            &error,
+            SignalQueryError::Macro {
+                source: MacroError::UndefinedParam { name },
+                ..
+            } if name == "undefined"
+        ),
+        "unexpected error: {error:?}"
+    );
 }

@@ -1,5 +1,5 @@
 use crate::fixture::fixture_window;
-use crate::macros::{self, Dialect, MacroContext, MacroError};
+use crate::macros::{self, Dialect, MacroContext, MacroError, WindowScope};
 use crate::rule::{Rule, Rules};
 
 const ALLOWED_FUNCTIONS: [&str; 23] = [
@@ -144,6 +144,7 @@ pub fn validate(rules: &Rules) -> Vec<ValidationError> {
         let context = MacroContext {
             dialect: Dialect::DuckDb,
             window: &window,
+            scope: WindowScope::Whole,
             params: &signal.params,
         };
         if let Err(error) = macros::expand(&signal.sql, &context) {

@@ -1,8 +1,9 @@
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 
 use crate::lineage::LineageEdge;
-use crate::macros::{Dialect, MacroContext, MacroError, expand};
+use crate::macros::{Dialect, MacroContext, MacroError, WindowScope, expand};
 use crate::rule::{DataRequirement, SignalRule};
 use crate::{AnalysisWindow, SignalRow};
 
@@ -98,6 +99,7 @@ pub async fn query_signal_rule<B: QueryBackend + ?Sized>(
     let context = MacroContext {
         dialect: backend.dialect(),
         window,
+        scope: WindowScope::Whole,
         params: &rule.params,
     };
     let sql =
@@ -112,6 +114,16 @@ pub async fn query_signal_rule<B: QueryBackend + ?Sized>(
             rule_id: rule.id.clone(),
             source,
         })
+}
+
+pub fn batch_signal_sql(
+    _rule: &SignalRule,
+    _dialect: Dialect,
+    _window: &AnalysisWindow,
+    _batch_start: DateTime<Utc>,
+    _batch_end: DateTime<Utc>,
+) -> Result<String, SignalQueryError> {
+    todo!()
 }
 
 fn with_baseline(sql: &str) -> String {
