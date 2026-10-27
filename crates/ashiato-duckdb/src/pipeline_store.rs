@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use ashiato_core::SignalRow;
-use ashiato_core::lineage::LineageEdge;
+use ashiato_core::lineage::{Caller, Federation, LineageEdge};
 use ashiato_core::sequence::ObservedSignal;
 use ashiato_pipeline::{Manifest, ManifestEntry, PartitionId, PartitionManifest};
 use chrono::{DateTime, Utc};
@@ -18,6 +18,14 @@ const SELECT_SIGNALS_SQL: &str = "SELECT rule_id, epoch_us(start_time), epoch_us
      FROM signals \
      ORDER BY rule_id, start_time, end_time, event_ids, access_key_id NULLS FIRST, \
      principal_key, source_ip, account_id, region, attrs";
+const SELECT_LINEAGE_EDGES_SQL: &str = "SELECT child_access_key_id, parent_access_key_id, \
+     parent_principal_key, parent_principal_arn, parent_identity_type, parent_account_id, \
+     parent_invoked_by, role_arn, issued_by_event_id, cross_account, federation_provider, \
+     federation_subject \
+     FROM lineage_edges \
+     QUALIFY row_number() OVER (PARTITION BY child_access_key_id ORDER BY batch_start, seq) = 1 \
+     ORDER BY batch_start, seq";
+
 #[derive(Debug, thiserror::Error)]
 pub enum StoreError {
     #[error(transparent)]
@@ -137,8 +145,32 @@ impl PipelineStore {
         Ok(signals)
     }
 
+    // Edges for the same child access key are kept once, in the order of event_time and
+    // event_id, which is the same as the lineage SQL over all events.
     pub fn lineage_edges(&self) -> Result<Vec<LineageEdge>, StoreError> {
-        todo!()
+        let mut statement = self.connection.prepare(SELECT_LINEAGE_EDGES_SQL)?;
+        let edges = statement.query_map([], |row| {
+            let federation = match (row.get(10)?, row.get(11)?) {
+                (Some(provider), Some(subject)) => Some(Federation { provider, subject }),
+                _ => None,
+            };
+            Ok(LineageEdge {
+                child_access_key_id: row.get(0)?,
+                parent: Caller {
+                    access_key_id: row.get(1)?,
+                    principal_key: row.get(2)?,
+                    principal_arn: row.get(3)?,
+                    identity_type: row.get(4)?,
+                    account_id: row.get(5)?,
+                    invoked_by: row.get(6)?,
+                },
+                role_arn: row.get(7)?,
+                issued_by_event_id: row.get(8)?,
+                cross_account: row.get(9)?,
+                federation,
+            })
+        })?;
+        Ok(edges.collect::<Result<_, _>>()?)
     }
 
     fn stored_digest(&self) -> Result<Option<String>, StoreError> {

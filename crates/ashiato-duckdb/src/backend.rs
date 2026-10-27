@@ -115,7 +115,7 @@ fn query_data_availability(
 
 // Sessions used in the analysis period may have been issued during the baseline period,
 // so edges are taken from the start of the baseline period.
-fn query_lineage(
+pub(crate) fn query_lineage(
     connection: &duckdb::Connection,
     since: &str,
     until: &str,
@@ -147,7 +147,7 @@ fn query_lineage(
     edges.collect::<Result<_, _>>().map_err(query_error)
 }
 
-fn sql_timestamp(time: DateTime<Utc>) -> String {
+pub(crate) fn sql_timestamp(time: DateTime<Utc>) -> String {
     time.format("%Y-%m-%d %H:%M:%S%.6f").to_string()
 }
 

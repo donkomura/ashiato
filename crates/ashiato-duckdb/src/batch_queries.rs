@@ -1,11 +1,11 @@
 use ashiato_core::AnalysisWindow;
 use ashiato_core::macros::Dialect;
-use ashiato_core::query::{SignalQueryError, batch_signal_sql};
+use ashiato_core::query::{BackendError, SignalQueryError, batch_signal_sql};
 use ashiato_core::rule::SignalRule;
 use ashiato_pipeline::EventTime;
 use duckdb::types::{TimeUnit, Value};
 
-use crate::backend::query_signals;
+use crate::backend::{query_lineage, query_signals, sql_timestamp};
 
 const CREATE_BATCH_EVENTS_SQL: &str = "CREATE OR REPLACE TEMP TABLE events AS \
      SELECT * REPLACE ( \
@@ -19,6 +19,8 @@ const CREATE_BATCH_EVENTS_SQL: &str = "CREATE OR REPLACE TEMP TABLE events AS \
 pub enum BatchQueryError {
     #[error(transparent)]
     Signal(#[from] SignalQueryError),
+    #[error("failed to query the session lineage")]
+    Lineage(#[source] BackendError),
     #[error("failed to store the results of a batch")]
     DuckDb(#[from] duckdb::Error),
     #[error("failed to encode a signal")]
@@ -44,6 +46,13 @@ impl BatchQueries {
         connection.execute(CREATE_BATCH_EVENTS_SQL, [timestamp(start), timestamp(end)])?;
         if start < self.window.until() && self.window.since() < end {
             self.query_signals(connection, start, end)?;
+        }
+        // Lineage is taken from the baseline period as well, so that a session issued before
+        // the analysis period can still be traced to its origin (streaming-pipeline.md 8.6).
+        let since = start.max(self.window.baseline_since());
+        let until = end.min(self.window.until());
+        if since < until {
+            self.query_lineage(connection, start, since, until)?;
         }
         connection.execute_batch("DROP TABLE events;")?;
         Ok(())
@@ -83,6 +92,43 @@ impl BatchQueries {
                     ],
                 )?;
             }
+        }
+        Ok(())
+    }
+
+    fn query_lineage(
+        &self,
+        connection: &duckdb::Connection,
+        start: EventTime,
+        since: EventTime,
+        until: EventTime,
+    ) -> Result<(), BatchQueryError> {
+        let edges = query_lineage(connection, &sql_timestamp(since), &sql_timestamp(until))
+            .map_err(BatchQueryError::Lineage)?;
+        for (seq, edge) in edges.into_iter().enumerate() {
+            let (provider, subject) = edge
+                .federation
+                .map(|federation| (federation.provider, federation.subject))
+                .unzip();
+            connection.execute(
+                "INSERT INTO lineage_edges VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                duckdb::params![
+                    timestamp(start),
+                    seq as u64,
+                    edge.child_access_key_id,
+                    edge.parent.access_key_id,
+                    edge.parent.principal_key,
+                    edge.parent.principal_arn,
+                    edge.parent.identity_type,
+                    edge.parent.account_id,
+                    edge.parent.invoked_by,
+                    edge.role_arn,
+                    edge.issued_by_event_id,
+                    edge.cross_account,
+                    provider,
+                    subject,
+                ],
+            )?;
         }
         Ok(())
     }

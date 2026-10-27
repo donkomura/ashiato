@@ -137,6 +137,25 @@ CREATE TABLE IF NOT EXISTS signals (
     attrs VARCHAR NOT NULL
 );
 
+-- seq keeps the order of the lineage SQL within a batch, which is the order of event_time and
+-- event_id. Edges for the same child access key are merged when they are read.
+CREATE TABLE IF NOT EXISTS lineage_edges (
+    batch_start TIMESTAMP NOT NULL,
+    seq UBIGINT NOT NULL,
+    child_access_key_id VARCHAR NOT NULL,
+    parent_access_key_id VARCHAR,
+    parent_principal_key VARCHAR NOT NULL,
+    parent_principal_arn VARCHAR,
+    parent_identity_type VARCHAR NOT NULL,
+    parent_account_id VARCHAR,
+    parent_invoked_by VARCHAR,
+    role_arn VARCHAR,
+    issued_by_event_id VARCHAR NOT NULL,
+    cross_account BOOLEAN NOT NULL,
+    federation_provider VARCHAR,
+    federation_subject VARCHAR
+);
+
 -- Rules refer to these relations by name. They are filled from the baseline period (段階 17).
 CREATE TABLE IF NOT EXISTS baseline (
     principal_key VARCHAR,
