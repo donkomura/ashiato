@@ -325,6 +325,10 @@ impl Analyzer {
         Ok(std::mem::take(&mut self.acks))
     }
 
+    pub fn finalize_batches(&mut self) -> Result<Vec<(EventTime, EventTime)>, AnalyzerError> {
+        todo!()
+    }
+
     pub async fn run<R: PartitionReader + ?Sized>(
         &mut self,
         reader: &mut R,

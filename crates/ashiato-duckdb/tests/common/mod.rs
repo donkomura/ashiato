@@ -45,6 +45,10 @@ impl Workspace {
         }
     }
 
+    pub fn logs(&self) -> &Path {
+        self.logs.path()
+    }
+
     pub fn write(&self, log: &LogFile) -> PathBuf {
         write_log_file(self.logs.path(), log)
     }
