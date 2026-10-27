@@ -44,19 +44,99 @@ pub enum Admission {
 }
 
 pub fn admit(
-    _message: &PartitionMessage,
-    _progress: &PartitionProgress,
-    _file_count: u64,
+    message: &PartitionMessage,
+    progress: &PartitionProgress,
+    file_count: u64,
 ) -> Admission {
-    todo!()
+    match message {
+        PartitionMessage::FileChunk {
+            position,
+            record_count,
+            file,
+            ..
+        } => {
+            let end_offset = position.record_offset + u64::from(*record_count);
+            let after = if end_offset >= file.record_count {
+                position.next_file()
+            } else {
+                Position::new(position.file_seq, end_offset)
+            };
+            if let Some(duplicate) = duplicate(after, progress) {
+                return duplicate;
+            }
+            if *position <= progress.next && position.file_seq == progress.next.file_seq {
+                Admission::Accept {
+                    skip_records: progress.next.record_offset - position.record_offset,
+                    next: after,
+                    ends_partition: false,
+                }
+            } else {
+                gap(progress, *position)
+            }
+        }
+        PartitionMessage::FileError { position, .. } => {
+            let start = Position::new(position.file_seq, 0);
+            if let Some(duplicate) = duplicate(start.next_file(), progress) {
+                return duplicate;
+            }
+            if start == progress.next {
+                Admission::Accept {
+                    skip_records: 0,
+                    next: start.next_file(),
+                    ends_partition: false,
+                }
+            } else {
+                gap(progress, start)
+            }
+        }
+        PartitionMessage::EndOfPartition { position, .. } => {
+            let last = Position::new(file_count, 0);
+            if progress.ended && *position == last {
+                let ack = if progress.end_committed {
+                    AckTiming::Now
+                } else {
+                    AckTiming::AfterNextCommit
+                };
+                return Admission::Duplicate { ack };
+            }
+            if *position == last && progress.next == last && !progress.ended {
+                Admission::Accept {
+                    skip_records: 0,
+                    next: last,
+                    ends_partition: true,
+                }
+            } else {
+                gap(progress, *position)
+            }
+        }
+    }
 }
 
-pub fn file_watermark(_file_time: EventTime, _allowed_lateness: TimeDelta) -> EventTime {
-    todo!()
+fn duplicate(after: Position, progress: &PartitionProgress) -> Option<Admission> {
+    if after > progress.next {
+        return None;
+    }
+    let ack = if after <= progress.committed {
+        AckTiming::Now
+    } else {
+        AckTiming::AfterNextCommit
+    };
+    Some(Admission::Duplicate { ack })
 }
 
-pub fn is_late(_event_time: EventTime, _watermark: EventTime) -> bool {
-    todo!()
+fn gap(progress: &PartitionProgress, received: Position) -> Admission {
+    Admission::Gap {
+        expected: progress.next,
+        received,
+    }
+}
+
+pub fn file_watermark(file_time: EventTime, allowed_lateness: TimeDelta) -> EventTime {
+    file_time - allowed_lateness
+}
+
+pub fn is_late(event_time: EventTime, watermark: EventTime) -> bool {
+    event_time < watermark
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,24 +153,44 @@ pub enum GlobalWatermark {
 }
 
 pub fn global_watermark(
-    _partitions: impl IntoIterator<Item = PartitionWatermark>,
-    _read_since: EventTime,
-    _allowed_lateness: TimeDelta,
+    partitions: impl IntoIterator<Item = PartitionWatermark>,
+    read_since: EventTime,
+    allowed_lateness: TimeDelta,
 ) -> GlobalWatermark {
-    todo!()
+    partitions
+        .into_iter()
+        .filter_map(|partition| match partition {
+            PartitionWatermark::NotStarted => Some(read_since - allowed_lateness),
+            PartitionWatermark::At(watermark) => Some(watermark),
+            PartitionWatermark::Ended => None,
+        })
+        .min()
+        .map_or(GlobalWatermark::Complete, GlobalWatermark::At)
 }
 
-pub fn batch_start(_event_time: EventTime, _batch: TimeDelta) -> EventTime {
-    todo!()
+pub fn batch_start(event_time: EventTime, batch: TimeDelta) -> EventTime {
+    let width = batch
+        .num_microseconds()
+        .filter(|width| *width > 0)
+        .expect("the batch length is a positive number of microseconds");
+    let micros = event_time.timestamp_micros();
+    EventTime::from_timestamp_micros(micros - micros.rem_euclid(width))
+        .expect("the start of a batch is not later than a representable event time")
 }
 
-pub fn is_batch_complete(_batch_end: EventTime, _global: GlobalWatermark) -> bool {
-    todo!()
+// Every event accepted from now on is at or after the global watermark, because it is not
+// before the watermark of its file, which is not before the global watermark. A batch that
+// ends at or before the global watermark therefore receives no more events.
+pub fn is_batch_complete(batch_end: EventTime, global: GlobalWatermark) -> bool {
+    match global {
+        GlobalWatermark::At(watermark) => batch_end <= watermark,
+        GlobalWatermark::Complete => true,
+    }
 }
 
 pub fn recent_event_expiry(
-    _partition_watermark: EventTime,
-    _allowed_lateness: TimeDelta,
+    partition_watermark: EventTime,
+    allowed_lateness: TimeDelta,
 ) -> EventTime {
-    todo!()
+    partition_watermark - allowed_lateness * 2
 }
