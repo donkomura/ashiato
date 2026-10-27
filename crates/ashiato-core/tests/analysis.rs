@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, HashMap};
 
-use ashiato_core::analysis::{AnalysisError, analyze};
-use ashiato_core::lineage::{Caller, LineageEdge, LineageStep, Origin, OriginKind};
+use ashiato_core::analysis::{AnalysisError, analyze, correlate};
+use ashiato_core::lineage::{Caller, LineageEdge, LineageStep, LineageWarning, Origin, OriginKind};
 use ashiato_core::macros::Dialect;
 use ashiato_core::output::{RuleSkippedRecord, SignalEvidence, SkipReason, StepRecord};
 use ashiato_core::query::{BackendError, DataAvailability, QueryBackend};
 use ashiato_core::rule::{DataRequirement, RuleFile, RuleSource, Rules};
+use ashiato_core::sequence::ObservedSignal;
 use ashiato_core::{AnalysisWindow, Severity, SignalRow, Tactic};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -478,4 +479,212 @@ async fn a_failing_data_availability_query_is_an_error() {
         matches!(error, AnalysisError::DataAvailability(_)),
         "unexpected error: {error:?}"
     );
+}
+
+const GRANDCHILD_KEY: &str = "ASIAGRANDCHILD";
+const AUDIT_ROLE_ARN: &str = "arn:aws:iam::111111111111:role/audit";
+
+fn observed(signal_id: &str, row: SignalRow) -> ObservedSignal {
+    ObservedSignal {
+        signal_id: signal_id.to_owned(),
+        row,
+    }
+}
+
+fn session_edge(child: &str, parent_key: &str, role_arn: &str, event_id: &str) -> LineageEdge {
+    LineageEdge {
+        child_access_key_id: child.to_owned(),
+        parent: Caller {
+            access_key_id: Some(parent_key.to_owned()),
+            principal_key: ADMIN_ROLE_ARN.to_owned(),
+            principal_arn: Some(ADMIN_ROLE_ARN.to_owned()),
+            identity_type: "AssumedRole".to_owned(),
+            account_id: Some(ACCOUNT.to_owned()),
+            invoked_by: None,
+        },
+        role_arn: Some(role_arn.to_owned()),
+        issued_by_event_id: event_id.to_owned(),
+        cross_account: false,
+        federation: None,
+    }
+}
+
+#[test]
+fn correlate_groups_signals_of_issued_sessions_under_their_origin_and_matches_the_scenario() {
+    let login = row("10:00", ALICE_KEY, ALICE_ARN, "evt-login");
+    let escalate = row("10:10", GRANDCHILD_KEY, AUDIT_ROLE_ARN, "evt-escalate");
+
+    let analysis = correlate(
+        &scenario_rules(),
+        vec![
+            observed("login", login.clone()),
+            observed("escalate", escalate.clone()),
+        ],
+        vec![
+            alice_edge(),
+            session_edge(
+                GRANDCHILD_KEY,
+                CHILD_KEY,
+                AUDIT_ROLE_ARN,
+                "evt-assume-audit",
+            ),
+        ],
+    );
+
+    assert_eq!(analysis.matches.len(), 1, "{:#?}", analysis.matches);
+    let found = &analysis.matches[0];
+    assert_eq!(found.scenario_id, "login_then_escalate");
+    assert_eq!(found.origin, iam_user(ALICE_ARN));
+    assert_eq!(
+        found.steps,
+        vec![
+            StepRecord {
+                signal_id: "login".to_owned(),
+                signals: vec![evidence(&login)],
+            },
+            StepRecord {
+                signal_id: "escalate".to_owned(),
+                signals: vec![evidence(&escalate)],
+            },
+        ]
+    );
+    assert_eq!(
+        found.lineage,
+        vec![
+            LineageStep {
+                access_key_id: CHILD_KEY.to_owned(),
+                role_arn: Some(ADMIN_ROLE_ARN.to_owned()),
+                issued_by_event_id: "evt-assume".to_owned(),
+            },
+            LineageStep {
+                access_key_id: GRANDCHILD_KEY.to_owned(),
+                role_arn: Some(AUDIT_ROLE_ARN.to_owned()),
+                issued_by_event_id: "evt-assume-audit".to_owned(),
+            },
+        ]
+    );
+    let origins: Vec<&Origin> = analysis
+        .signals
+        .iter()
+        .map(|signal| &signal.origin)
+        .collect();
+    assert_eq!(origins, vec![&iam_user(ALICE_ARN), &iam_user(ALICE_ARN)]);
+    assert!(analysis.warnings.is_empty());
+}
+
+#[test]
+fn correlate_without_the_edge_keeps_the_signals_of_the_session_apart() {
+    let analysis = correlate(
+        &scenario_rules(),
+        vec![
+            observed("login", row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")),
+            observed(
+                "escalate",
+                row("10:10", CHILD_KEY, ADMIN_ROLE_ARN, "evt-escalate"),
+            ),
+        ],
+        Vec::new(),
+    );
+
+    assert!(analysis.matches.is_empty(), "{:#?}", analysis.matches);
+    let origins: Vec<(&str, OriginKind)> = analysis
+        .signals
+        .iter()
+        .map(|signal| (signal.origin.id.as_str(), signal.origin.kind))
+        .collect();
+    let alice = format!("iam_user:{ALICE_ARN}");
+    let role = format!("role:{ADMIN_ROLE_ARN}");
+    assert_eq!(
+        origins,
+        vec![
+            (alice.as_str(), OriginKind::IamUser),
+            (role.as_str(), OriginKind::UnresolvedRole),
+        ]
+    );
+}
+
+#[test]
+fn correlate_uses_one_of_the_duplicated_edges_of_a_session() {
+    let analysis = correlate(
+        &scenario_rules(),
+        vec![
+            observed("login", row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")),
+            observed(
+                "escalate",
+                row("10:10", CHILD_KEY, ADMIN_ROLE_ARN, "evt-escalate"),
+            ),
+        ],
+        vec![alice_edge(), alice_edge()],
+    );
+
+    assert_eq!(analysis.matches.len(), 1, "{:#?}", analysis.matches);
+    assert_eq!(analysis.matches[0].lineage.len(), 1);
+}
+
+#[test]
+fn correlate_reports_each_lineage_cycle_once() {
+    let analysis = correlate(
+        &scenario_rules(),
+        vec![
+            observed("login", row("10:00", CHILD_KEY, ADMIN_ROLE_ARN, "evt-1")),
+            observed("login", row("10:05", CHILD_KEY, ADMIN_ROLE_ARN, "evt-2")),
+        ],
+        vec![
+            session_edge(CHILD_KEY, GRANDCHILD_KEY, ADMIN_ROLE_ARN, "evt-assume-1"),
+            session_edge(GRANDCHILD_KEY, CHILD_KEY, AUDIT_ROLE_ARN, "evt-assume-2"),
+        ],
+    );
+
+    assert_eq!(
+        analysis.warnings,
+        vec![LineageWarning::Cycle {
+            access_key_id: CHILD_KEY.to_owned(),
+        }]
+    );
+    assert_eq!(analysis.signals.len(), 2);
+}
+
+#[test]
+fn correlate_does_not_depend_on_the_order_of_signals_and_edges_with_distinct_times() {
+    let signals = vec![
+        observed("login", row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")),
+        observed(
+            "escalate",
+            row("10:10", GRANDCHILD_KEY, AUDIT_ROLE_ARN, "evt-escalate"),
+        ),
+        observed("login", row("10:20", "AKIABOB", BOB_ARN, "evt-bob-login")),
+        observed(
+            "escalate",
+            row("10:30", CHILD_KEY, ADMIN_ROLE_ARN, "evt-escalate-2"),
+        ),
+    ];
+    let edges = vec![
+        alice_edge(),
+        session_edge(
+            GRANDCHILD_KEY,
+            CHILD_KEY,
+            AUDIT_ROLE_ARN,
+            "evt-assume-audit",
+        ),
+    ];
+
+    let forward = correlate(&scenario_rules(), signals.clone(), edges.clone());
+    let backward = correlate(
+        &scenario_rules(),
+        signals.into_iter().rev().collect(),
+        edges.into_iter().rev().collect(),
+    );
+
+    assert_eq!(forward, backward);
+    assert_eq!(forward.signals.len(), 4);
+    assert_eq!(forward.matches.len(), 1, "{:#?}", forward.matches);
+}
+
+#[test]
+fn correlate_without_signals_returns_an_empty_analysis() {
+    let analysis = correlate(&scenario_rules(), Vec::new(), vec![alice_edge()]);
+
+    assert!(analysis.signals.is_empty());
+    assert!(analysis.matches.is_empty());
+    assert!(analysis.warnings.is_empty());
 }
