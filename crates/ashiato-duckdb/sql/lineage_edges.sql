@@ -41,7 +41,13 @@ SELECT
     invoked_by,
     role_arn,
     event_id,
-    coalesce(split_part(role_arn, ':', 5) <> principal_account_id, false) AS cross_account,
+    -- Written with IS DISTINCT FROM instead of coalesce(split_part(...) <> ..., false), which
+    -- gives the same result. DuckDB 1.2 fails to bind the latter with "BindBuiltinScalarFunction
+    -- did not return a BoundFunctionExpression" when request_parameters is NULL in every row,
+    -- as in a batch of the pipeline that holds only ConsoleLogin events.
+    role_arn IS NOT NULL
+        AND principal_account_id IS NOT NULL
+        AND split_part(role_arn, ':', 5) IS DISTINCT FROM principal_account_id AS cross_account,
     federation_provider,
     federation_subject
 FROM issued
