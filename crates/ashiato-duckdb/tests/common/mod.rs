@@ -63,7 +63,7 @@ impl Workspace {
         let scope = ListScope {
             accounts: None,
             regions: None,
-            period: at(1, 0, 0)..at(31, 0, 0),
+            period: Utc.with_ymd_and_hms(2026, 9, 1, 0, 0, 0).unwrap()..at(31, 0, 0),
         };
         list_local(self.logs.path(), &scope).unwrap().manifest
     }

@@ -1,5 +1,7 @@
 use std::path::Path;
 
+use ashiato_core::lineage::LineageEdge;
+use ashiato_core::sequence::ObservedSignal;
 use ashiato_pipeline::{Manifest, ManifestEntry, PartitionId, PartitionManifest};
 use chrono::DateTime;
 use duckdb::OptionalExt;
@@ -73,6 +75,14 @@ impl PipelineStore {
         let manifest = list()?;
         self.save(digest, &manifest)?;
         Ok(manifest)
+    }
+
+    pub fn observed_signals(&self) -> Result<Vec<ObservedSignal>, StoreError> {
+        todo!()
+    }
+
+    pub fn lineage_edges(&self) -> Result<Vec<LineageEdge>, StoreError> {
+        todo!()
     }
 
     fn stored_digest(&self) -> Result<Option<String>, StoreError> {

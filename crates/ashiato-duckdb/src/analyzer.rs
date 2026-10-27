@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use ashiato_core::AnalysisWindow;
+use ashiato_core::rule::SignalRule;
 use ashiato_pipeline::{
     AckTiming, Admission, Delivery, DeliveryHandle, EventTime, IngestedFile, Manifest, PartitionId,
     PartitionMessage, PartitionProgress, PartitionReader, PartitionWatermark, Position,
@@ -143,6 +145,14 @@ impl Analyzer {
             acks: Vec::new(),
             uncommitted_messages: 0,
         })
+    }
+
+    pub fn with_queries(self, _rules: Vec<SignalRule>, _window: AnalysisWindow) -> Self {
+        todo!()
+    }
+
+    pub fn into_store(self) -> PipelineStore {
+        todo!()
     }
 
     pub fn resume_positions(&self) -> Vec<Position> {
