@@ -322,6 +322,7 @@ dependencies = [
 name = "ashiato-duckdb"
 version = "0.1.0"
 dependencies = [
+ "arrow-array",
  "ashiato-core",
  "ashiato-ingest",
  "ashiato-pipeline",

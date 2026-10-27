@@ -17,15 +17,16 @@ ashiato-pipeline = { version = "0.1.0", path = "../ashiato-pipeline" }
 ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
 async-trait = "0.1.92"
 chrono = "0.4.45"
-duckdb = "1.20000.0"
+duckdb = { version = "1.20000.0", features = ["appender-arrow"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["rt"] }
 
 [dev-dependencies]
+arrow-array = "60.0.0"
 ashiato-ingest = { version = "0.1.0", path = "../ashiato-ingest" }
 flate2 = "1.1.10"
 serde_json = "1.0.154"
 tempfile = "3.27.0"
-tokio = { version = "1.54.1", features = ["macros", "rt"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread"] }

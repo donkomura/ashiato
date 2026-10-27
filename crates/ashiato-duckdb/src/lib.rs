@@ -7,10 +7,12 @@ use std::thread;
 
 use sha2::{Digest, Sha256};
 
+mod analyzer;
 mod backend;
 pub mod fixture;
 mod pipeline_store;
 
+pub use analyzer::{Analyzer, AnalyzerError, AnalyzerSettings};
 pub use backend::DuckDbBackend;
 pub use pipeline_store::{PipelineStore, StoreError};
 
