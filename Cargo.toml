@@ -4,6 +4,7 @@ members = [
     "crates/ashiato-core",
     "crates/ashiato-testkit",
     "crates/ashiato-pipeline",
+    "crates/ashiato-ingest",
     "crates/ashiato-duckdb",
     "crates/ashiato-cli",
 ]

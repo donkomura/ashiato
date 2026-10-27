@@ -9,8 +9,10 @@ use sha2::{Digest, Sha256};
 
 mod backend;
 pub mod fixture;
+mod pipeline_store;
 
 pub use backend::DuckDbBackend;
+pub use pipeline_store::{PipelineStore, StoreError};
 
 const SCHEMA_SQL: &str = include_str!("../sql/schema.sql");
 const STAGE_RECORDS_SQL: &str = include_str!("../sql/stage_records.sql");

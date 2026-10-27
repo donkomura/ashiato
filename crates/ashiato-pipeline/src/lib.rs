@@ -1,4 +1,5 @@
 mod channel;
+mod manifest;
 mod message;
 mod plan;
 mod progress;
@@ -6,6 +7,7 @@ mod schema;
 mod transport;
 
 pub use channel::{ChannelReader, ChannelWriter, partition_channels};
+pub use manifest::{Manifest, ManifestEntry, PartitionManifest};
 pub use message::{EventTime, IngestedFile, PartitionId, PartitionMessage, Position, file_id};
 pub use plan::{
     BrokerSettings, ByteSizeError, PipelineSettings, Placement, PlacementMode, PlanError,

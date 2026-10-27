@@ -1,0 +1,18 @@
+[package]
+name = "ashiato-ingest"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ashiato-pipeline = { version = "0.1.0", path = "../ashiato-pipeline" }
+chrono = "0.4.45"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
+tempfile = "3.27.0"

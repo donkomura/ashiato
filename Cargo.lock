@@ -323,6 +323,8 @@ name = "ashiato-duckdb"
 version = "0.1.0"
 dependencies = [
  "ashiato-core",
+ "ashiato-ingest",
+ "ashiato-pipeline",
  "ashiato-testkit",
  "async-trait",
  "chrono",
@@ -333,6 +335,17 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+]
+
+[[package]]
+name = "ashiato-ingest"
+version = "0.1.0"
+dependencies = [
+ "ashiato-pipeline",
+ "ashiato-testkit",
+ "chrono",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]
@@ -359,8 +372,10 @@ version = "0.1.0"
 dependencies = [
  "ashiato-core",
  "chrono",
+ "flate2",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
 ]
 
