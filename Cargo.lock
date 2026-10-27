@@ -341,10 +341,12 @@ version = "0.1.0"
 dependencies = [
  "arrow-array",
  "arrow-schema",
+ "async-trait",
  "chrono",
  "serde",
  "serde_json",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
