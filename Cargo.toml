@@ -3,6 +3,7 @@ resolver = "3"
 members = [
     "crates/ashiato-core",
     "crates/ashiato-testkit",
+    "crates/ashiato-pipeline",
     "crates/ashiato-duckdb",
     "crates/ashiato-cli",
 ]

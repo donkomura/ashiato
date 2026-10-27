@@ -336,6 +336,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ashiato-pipeline"
+version = "0.1.0"
+dependencies = [
+ "arrow-array",
+ "arrow-schema",
+ "chrono",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "ashiato-testkit"
 version = "0.1.0"
 dependencies = [
