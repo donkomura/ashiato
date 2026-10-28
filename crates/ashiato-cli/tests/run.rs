@@ -440,6 +440,22 @@ fn settings_that_are_not_implemented_yet_are_rejected() {
 }
 
 #[test]
+fn a_distributed_run_must_read_from_s3() {
+    let case = RunCase::new();
+    case.write_plan(&PLAN.replace(
+        "mode: single_process",
+        "mode: distributed\n  nats_url: nats://127.0.0.1:4222",
+    ));
+
+    let output = case.run_output(&[]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("source.kind: s3"), "{stderr}");
+    assert!(!case.dir.path().join("case/ashiato.duckdb").exists());
+}
+
+#[test]
 fn the_number_of_ingest_workers_does_not_change_the_output() {
     let case = RunCase::new();
     for (account, region) in [
