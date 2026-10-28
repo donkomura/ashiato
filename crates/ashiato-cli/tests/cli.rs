@@ -768,6 +768,145 @@ fn rules_validate_rejects_a_scenario_that_refers_to_an_unknown_signal() {
     assert!(stderr.contains("test_console_login"), "stderr: {stderr}");
 }
 
+const BINNED_LOGIN_RULE: &str = r#"
+kind: signal
+id: test_binned_login
+title: 10 分ごとのコンソールへのログイン
+severity: low
+tactics: [TA0001]
+params:
+  bin: 10m
+sql: |
+  SELECT
+    min(event_time)      AS start_time,
+    max(event_time)      AS end_time,
+    array_agg(event_id)  AS event_ids,
+    access_key_id,
+    principal_key,
+    min(source_ip)       AS source_ip,
+    recipient_account_id AS account_id,
+    min(aws_region)      AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_name = 'ConsoleLogin'
+  GROUP BY access_key_id, principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+"#;
+
+fn rules_validate_with_batch(rules: Option<&Path>, batch: &str) -> std::process::Output {
+    let mut command = ashiato();
+    command.args(["rules", "validate", "--batch", batch]);
+    if let Some(rules) = rules {
+        command.arg("--rules").arg(rules);
+    }
+    command.output().unwrap()
+}
+
+fn warnings(stderr: &[u8]) -> Vec<String> {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .filter(|line| line.starts_with("warning: "))
+        .map(str::to_owned)
+        .collect()
+}
+
+#[test]
+fn rules_validate_warns_about_the_builtin_rules_that_the_pipeline_cannot_evaluate() {
+    let output = rules_command("validate", None);
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let warnings = warnings(&output.stderr);
+    for rule_id in [
+        "cloudtrail_logging_paused",
+        "first_seen_account_region_write",
+        "role_session_outlier",
+        "self_privilege_escalation",
+        "temporary_credential_ip_change",
+    ] {
+        assert!(
+            warnings.iter().any(|warning| warning.contains(rule_id)),
+            "{rule_id} in {warnings:#?}"
+        );
+    }
+    assert_eq!(
+        warnings
+            .iter()
+            .filter(|warning| warning.contains("in_baseline_window"))
+            .count(),
+        3,
+        "{warnings:#?}"
+    );
+}
+
+#[test]
+fn rules_validate_warns_when_the_batch_is_not_a_multiple_of_the_time_bin() {
+    let dir = TempDir::new().unwrap();
+    write_rule(dir.path(), "test_binned_login", BINNED_LOGIN_RULE);
+
+    let divisible = rules_validate_with_batch(Some(dir.path()), "30m");
+    let indivisible = rules_validate_with_batch(Some(dir.path()), "15m");
+
+    assert!(divisible.status.success());
+    assert!(
+        !warnings(&divisible.stderr)
+            .iter()
+            .any(|warning| warning.contains("test_binned_login")),
+        "{:#?}",
+        warnings(&divisible.stderr)
+    );
+    assert!(
+        indivisible.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&indivisible.stderr)
+    );
+    let warnings = warnings(&indivisible.stderr);
+    let warning = warnings
+        .iter()
+        .find(|warning| warning.contains("test_binned_login"))
+        .unwrap_or_else(|| panic!("{warnings:#?}"));
+    assert!(warning.contains("10m"), "{warning}");
+    assert!(warning.contains("15m"), "{warning}");
+}
+
+#[test]
+fn rules_validate_fails_on_errors_even_when_it_also_warns() {
+    let dir = TempDir::new().unwrap();
+    write_rule(
+        dir.path(),
+        "test_binned_login",
+        &BINNED_LOGIN_RULE.replace(
+            "event_name = 'ConsoleLogin'",
+            "regexp_matches(event_name, '^Console')",
+        ),
+    );
+
+    let output = rules_validate_with_batch(Some(dir.path()), "15m");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("error: "), "stderr: {stderr}");
+    assert!(stderr.contains("regexp_matches"), "stderr: {stderr}");
+    assert!(
+        warnings(&output.stderr)
+            .iter()
+            .any(|warning| warning.contains("test_binned_login")),
+        "stderr: {stderr}"
+    );
+}
+
+#[test]
+fn rules_validate_rejects_a_batch_that_is_not_a_duration() {
+    let output = rules_validate_with_batch(None, "0h");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("0h"), "stderr: {stderr}");
+}
+
 #[test]
 fn rules_test_passes_the_builtin_fixtures() {
     let output = rules_command("test", None);

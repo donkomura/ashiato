@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 
-use ashiato_core::analysis::{AnalysisError, analyze, correlate};
+use ashiato_core::analysis::{
+    AnalysisError, analyze, correlate, correlate_streamed, not_streamable_rules,
+};
 use ashiato_core::context::Context;
 use ashiato_core::lineage::{Caller, LineageEdge, LineageStep, LineageWarning, Origin, OriginKind};
 use ashiato_core::macros::Dialect;
@@ -8,6 +10,7 @@ use ashiato_core::output::{RuleSkippedRecord, SignalEvidence, SkipReason, StepRe
 use ashiato_core::query::{BackendError, DataAvailability, QueryBackend};
 use ashiato_core::rule::{DataRequirement, RuleFile, RuleSource, Rules};
 use ashiato_core::sequence::ObservedSignal;
+use ashiato_core::validate::StreamingCheck;
 use ashiato_core::{AnalysisWindow, Severity, SignalRow, Tactic};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -384,6 +387,7 @@ fn skipped(rule_id: &str) -> RuleSkippedRecord {
         rule_id: rule_id.to_owned(),
         reason: SkipReason::MissingData,
         requires: vec![DataRequirement::S3DataEvents],
+        violations: Vec::new(),
     }
 }
 
@@ -709,4 +713,100 @@ fn correlate_without_signals_returns_an_empty_analysis() {
     assert!(analysis.signals.is_empty());
     assert!(analysis.matches.is_empty());
     assert!(analysis.warnings.is_empty());
+}
+
+const UNBINNED_RULE: &str = r#"
+kind: signal
+id: unbinned
+title: time_bin で区切らない集計
+severity: medium
+tactics: [TA0007]
+sql: SELECT count(*) FROM events GROUP BY principal_key
+"#;
+
+const UNBINNED_SCENARIO: &str = r#"
+kind: scenario
+id: login_then_unbinned
+title: ログインの後の time_bin で区切らない集計
+severity: high
+tactics: [TA0001, TA0007]
+window: 1h
+steps:
+  - signal: login
+  - signal: unbinned
+    optional: true
+"#;
+
+fn not_streamable(rule_id: &str, violations: Vec<StreamingCheck>) -> RuleSkippedRecord {
+    RuleSkippedRecord {
+        rule_id: rule_id.to_owned(),
+        reason: SkipReason::NotStreamable,
+        requires: Vec::new(),
+        violations,
+    }
+}
+
+#[test]
+fn rules_that_the_pipeline_cannot_evaluate_and_their_scenarios_are_not_streamable() {
+    let rules = rules(&[
+        ("login", LOGIN_RULE),
+        ("unbinned", UNBINNED_RULE),
+        ("login_then_unbinned", UNBINNED_SCENARIO),
+        ("login_then_escalate", SCENARIO),
+        ("escalate", ESCALATE_RULE),
+    ]);
+
+    let mut skipped = not_streamable_rules(&rules, "1h".parse().unwrap());
+
+    skipped.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
+    assert_eq!(
+        skipped,
+        vec![
+            not_streamable(
+                "login_then_unbinned",
+                vec![StreamingCheck::AggregateWithoutTimeBin]
+            ),
+            not_streamable("unbinned", vec![StreamingCheck::AggregateWithoutTimeBin]),
+        ]
+    );
+}
+
+#[test]
+fn correlate_streamed_leaves_out_the_rules_that_are_not_streamable() {
+    let rules = rules(&[
+        ("login", LOGIN_RULE),
+        ("unbinned", UNBINNED_RULE),
+        ("login_then_unbinned", UNBINNED_SCENARIO),
+        ("s3_read", S3_RULE),
+    ]);
+    let excluded = not_streamable_rules(&rules, "1h".parse().unwrap());
+
+    let analysis = correlate_streamed(
+        &rules,
+        vec![
+            observed("login", row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")),
+            observed(
+                "unbinned",
+                row("10:10", ALICE_KEY, ALICE_ARN, "evt-unbinned"),
+            ),
+        ],
+        Vec::new(),
+        DataAvailability {
+            events: 10,
+            s3_data_events: false,
+        },
+        excluded.clone(),
+        &Context::default(),
+    );
+
+    let signal_ids: Vec<&str> = analysis
+        .signals
+        .iter()
+        .map(|signal| signal.signal_id.as_str())
+        .collect();
+    assert_eq!(signal_ids, ["login"]);
+    assert!(analysis.matches.is_empty(), "{:#?}", analysis.matches);
+    let mut expected = excluded;
+    expected.push(skipped("s3_read"));
+    assert_eq!(analysis.skipped, expected);
 }

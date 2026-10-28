@@ -446,6 +446,7 @@ fn settings_that_are_not_implemented_yet_are_rejected() {
 fn skipped_rule_ids(lines: &[Value]) -> Vec<&str> {
     of_type(lines, "rule_skipped")
         .into_iter()
+        .filter(|line| line["reason"] == "missing_data")
         .map(|line| line["rule_id"].as_str().unwrap())
         .collect()
 }
@@ -469,15 +470,17 @@ fn run_skips_the_rules_that_need_s3_data_events_after_streaming_all_batches() {
     ] {
         assert!(skipped.contains(&rule_id), "{rule_id} in {skipped:?}");
     }
+    let all_skipped = of_type(&lines, "rule_skipped").len();
     assert!(
-        lines[1..=skipped.len()]
+        lines[1..=all_skipped]
             .iter()
             .all(|line| line["type"] == "rule_skipped"),
         "{lines:#?}"
     );
     for skipped in of_type(&lines, "rule_skipped") {
-        assert_eq!(skipped["reason"], "missing_data");
-        assert_eq!(skipped["requires"], json!(["s3_data_events"]));
+        if skipped["reason"] == "missing_data" {
+            assert_eq!(skipped["requires"], json!(["s3_data_events"]));
+        }
     }
 }
 
@@ -611,4 +614,155 @@ fn run_uses_the_scoring_thresholds_of_the_context() {
     let mut expected = alice_origin_score();
     expected["above_threshold"] = json!(true);
     assert_eq!(of_type(&lines, "origin_score"), [&expected]);
+}
+
+const UNBINNED_LOGIN_RULE: &str = r#"
+kind: signal
+id: test_unbinned_login
+title: 調査期間全体での主体ごとのコンソールへのログイン
+severity: low
+tactics: [TA0001]
+sql: |
+  SELECT
+    min(event_time)      AS start_time,
+    max(event_time)      AS end_time,
+    array_agg(event_id)  AS event_ids,
+    min(access_key_id)   AS access_key_id,
+    principal_key,
+    min(source_ip)       AS source_ip,
+    recipient_account_id AS account_id,
+    min(aws_region)      AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_name = 'ConsoleLogin'
+  GROUP BY principal_key, recipient_account_id
+"#;
+
+const BINNED_LOGIN_RULE: &str = r#"
+kind: signal
+id: test_binned_login
+title: 10 分ごとのコンソールへのログイン
+severity: low
+tactics: [TA0001]
+params:
+  bin: 10m
+sql: |
+  SELECT
+    min(event_time)      AS start_time,
+    max(event_time)      AS end_time,
+    array_agg(event_id)  AS event_ids,
+    min(access_key_id)   AS access_key_id,
+    principal_key,
+    min(source_ip)       AS source_ip,
+    recipient_account_id AS account_id,
+    min(aws_region)      AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_name = 'ConsoleLogin'
+  GROUP BY principal_key, recipient_account_id,
+           {{ time_bin(event_time, param('bin')) }}
+"#;
+
+const STREAMING_RULES: &str =
+    "rule: [test_repeated_console_login, test_unbinned_login, test_binned_login]";
+
+impl RunCase {
+    fn with_streaming_rules(self, context: Option<&str>) -> Self {
+        for (id, content) in [
+            ("test_unbinned_login", UNBINNED_LOGIN_RULE),
+            ("test_binned_login", BINNED_LOGIN_RULE),
+        ] {
+            let rule_dir = self.rules_dir().join(id);
+            fs::create_dir_all(&rule_dir).unwrap();
+            fs::write(rule_dir.join("rule.yaml"), content).unwrap();
+        }
+        let mut plan = PLAN.replace("rule: [test_repeated_console_login]", STREAMING_RULES);
+        if let Some(context) = context {
+            fs::write(self.dir.path().join("case/context.yaml"), context).unwrap();
+            plan.push_str("context: ./context.yaml\n");
+        }
+        self.write_plan(&plan);
+        self
+    }
+}
+
+fn signal_ids(lines: &[Value]) -> Vec<&str> {
+    let mut ids: Vec<&str> = of_type(lines, "signal")
+        .into_iter()
+        .map(|line| line["signal_id"].as_str().unwrap())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn run_skips_the_rules_that_the_batches_of_the_pipeline_cannot_evaluate() {
+    let case = RunCase::new().with_streaming_rules(Some("params:\n  test_binned_login.bin: 7m\n"));
+
+    let output = case.run_output(&["--emit-signals"]);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(output.status.success(), "stderr: {stderr}");
+    let lines = lines(&output.stdout);
+    let mut skipped = of_type(&lines, "rule_skipped");
+    skipped.sort_by_key(|line| line["rule_id"].as_str().unwrap().to_owned());
+    assert_eq!(
+        skipped,
+        [
+            &json!({
+                "type": "rule_skipped",
+                "rule_id": "test_binned_login",
+                "reason": "not_streamable",
+                "violations": ["batch_not_multiple_of_time_bin"],
+            }),
+            &json!({
+                "type": "rule_skipped",
+                "rule_id": "test_unbinned_login",
+                "reason": "not_streamable",
+                "violations": ["aggregate_without_time_bin"],
+            }),
+        ]
+    );
+    assert!(
+        lines[1..=skipped.len()]
+            .iter()
+            .all(|line| line["type"] == "rule_skipped"),
+        "{lines:#?}"
+    );
+    assert_eq!(
+        signal_ids(&lines),
+        ["test_console_login", "test_console_login"]
+    );
+    assert_eq!(of_type(&lines, "scenario_match").len(), 1, "{lines:#?}");
+    for rule_id in ["test_binned_login", "test_unbinned_login"] {
+        assert!(
+            stderr
+                .lines()
+                .any(|line| line.starts_with("warning: ") && line.contains(rule_id)),
+            "{rule_id} in {stderr}"
+        );
+    }
+    assert!(stderr.contains("7m"), "{stderr}");
+}
+
+#[test]
+fn run_evaluates_the_rules_whose_time_bin_divides_the_batch() {
+    let case = RunCase::new().with_streaming_rules(None);
+
+    let lines = case.run(&["--emit-signals"]);
+
+    let skipped: Vec<&str> = of_type(&lines, "rule_skipped")
+        .into_iter()
+        .map(|line| line["rule_id"].as_str().unwrap())
+        .collect();
+    assert_eq!(skipped, ["test_unbinned_login"], "{lines:#?}");
+    assert_eq!(
+        signal_ids(&lines),
+        [
+            "test_binned_login",
+            "test_binned_login",
+            "test_console_login",
+            "test_console_login"
+        ]
+    );
 }

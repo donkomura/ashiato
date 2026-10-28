@@ -8,6 +8,7 @@ use crate::lineage::{LineageStep, Origin};
 use crate::query::DataAvailability;
 use crate::rule::{DataRequirement, RuleSourceDigest};
 use crate::ruleset::{RuleRefs, RulesetDigest};
+use crate::validate::StreamingCheck;
 use crate::{Severity, SignalRow, Tactic};
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -39,13 +40,17 @@ pub struct RunRecord {
 pub struct RuleSkippedRecord {
     pub rule_id: String,
     pub reason: SkipReason,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub requires: Vec<DataRequirement>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub violations: Vec<StreamingCheck>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SkipReason {
     MissingData,
+    NotStreamable,
 }
 
 // The run record of `run`, which adds what the pipeline read to the run record of `analyze`

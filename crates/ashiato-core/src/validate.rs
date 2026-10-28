@@ -1,6 +1,9 @@
+use serde::Serialize;
+
+use crate::Duration;
 use crate::fixture::fixture_window;
 use crate::macros::{self, Dialect, MacroContext, MacroError, WindowScope};
-use crate::rule::{Rule, Rules};
+use crate::rule::{Rule, Rules, SignalRule};
 
 const ALLOWED_FUNCTIONS: [&str; 23] = [
     "array_agg",
@@ -69,6 +72,44 @@ pub enum ValidationError {
     DisallowedFunction { rule_id: String, function: String },
     #[error("signal {rule_id} has a macro that cannot be expanded: {error}")]
     Macro { rule_id: String, error: MacroError },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamingCheck {
+    AggregateWithoutTimeBin,
+    BatchNotMultipleOfTimeBin,
+    InBaselineWindow,
+}
+
+// Checks of streaming-pipeline.md 8.4. They are warnings rather than errors, since the rules
+// still work for `analyze`, and `run` leaves out the rules that fail them.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum StreamingViolation {
+    #[error(
+        "signal {rule_id} aggregates without grouping by time_bin, so the batches of the pipeline cannot evaluate it"
+    )]
+    AggregateWithoutTimeBin { rule_id: String },
+    #[error(
+        "the batch length {batch} is not a multiple of the time_bin length {bin} of signal {rule_id}"
+    )]
+    BatchNotMultipleOfTimeBin {
+        rule_id: String,
+        bin: Duration,
+        batch: Duration,
+    },
+    #[error("signal {rule_id} uses in_baseline_window, which the pipeline expands to FALSE")]
+    InBaselineWindow { rule_id: String },
+}
+
+impl StreamingViolation {
+    pub fn rule_id(&self) -> &str {
+        todo!()
+    }
+
+    pub fn check(&self) -> StreamingCheck {
+        todo!()
+    }
 }
 
 pub fn function_calls(sql: &str) -> Vec<&str> {
@@ -163,4 +204,14 @@ pub fn validate(rules: &Rules) -> Vec<ValidationError> {
         }
     }
     errors
+}
+
+pub fn validate_streaming(rules: &Rules, batch: Duration) -> Vec<StreamingViolation> {
+    let _ = (rules, batch);
+    todo!()
+}
+
+pub fn streaming_violations(rule: &SignalRule, batch: Duration) -> Vec<StreamingViolation> {
+    let _ = (rule, batch);
+    todo!()
 }

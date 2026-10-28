@@ -8,6 +8,7 @@ use ashiato_core::output::{
 use ashiato_core::query::DataAvailability;
 use ashiato_core::rule::{DataRequirement, RuleSourceDigest};
 use ashiato_core::ruleset::RulesetDigest;
+use ashiato_core::validate::StreamingCheck;
 use ashiato_core::{Severity, Tactic};
 use serde_json::{Value, json};
 
@@ -100,12 +101,39 @@ fn rule_skipped_record_has_the_shape_of_design_section_11() {
             rule_id: "cross_account_s3_destruction".to_owned(),
             reason: SkipReason::MissingData,
             requires: vec![DataRequirement::S3DataEvents],
+            violations: Vec::new(),
         })),
         json!({
             "type": "rule_skipped",
             "rule_id": "cross_account_s3_destruction",
             "reason": "missing_data",
             "requires": ["s3_data_events"],
+        })
+    );
+}
+
+#[test]
+fn rule_skipped_record_of_a_rule_that_is_not_streamable_names_the_failed_checks() {
+    assert_eq!(
+        written(OutputRecord::RuleSkipped(RuleSkippedRecord {
+            rule_id: "role_session_outlier".to_owned(),
+            reason: SkipReason::NotStreamable,
+            requires: Vec::new(),
+            violations: vec![
+                StreamingCheck::AggregateWithoutTimeBin,
+                StreamingCheck::BatchNotMultipleOfTimeBin,
+                StreamingCheck::InBaselineWindow,
+            ],
+        })),
+        json!({
+            "type": "rule_skipped",
+            "rule_id": "role_session_outlier",
+            "reason": "not_streamable",
+            "violations": [
+                "aggregate_without_time_bin",
+                "batch_not_multiple_of_time_bin",
+                "in_baseline_window",
+            ],
         })
     );
 }

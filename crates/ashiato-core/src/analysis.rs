@@ -15,7 +15,7 @@ use crate::query::{
 use crate::rule::{DataRequirement, Rule, Rules, ScenarioRule, SignalRule};
 use crate::ruleset::RuleRefs;
 use crate::sequence::{ObservedSignal, ScenarioMatch, match_scenario};
-use crate::{AnalysisWindow, Severity};
+use crate::{AnalysisWindow, Duration, Severity};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Analysis {
@@ -264,6 +264,23 @@ fn correlate_with(
     analysis
 }
 
+pub fn not_streamable_rules(rules: &Rules, batch: Duration) -> Vec<RuleSkippedRecord> {
+    let _ = (rules, batch);
+    todo!()
+}
+
+pub fn correlate_streamed(
+    rules: &Rules,
+    observed: Vec<ObservedSignal>,
+    edges: Vec<LineageEdge>,
+    data: DataAvailability,
+    not_streamable: Vec<RuleSkippedRecord>,
+    context: &Context,
+) -> Analysis {
+    let _ = (rules, observed, edges, data, not_streamable, context);
+    todo!()
+}
+
 pub fn skipped_rules(rules: &Rules, data: &DataAvailability) -> Vec<RuleSkippedRecord> {
     rules
         .iter()
@@ -284,6 +301,7 @@ pub fn skipped_rules(rules: &Rules, data: &DataAvailability) -> Vec<RuleSkippedR
                 rule_id: rule.id().to_owned(),
                 reason: SkipReason::MissingData,
                 requires: missing.into_iter().collect(),
+                violations: Vec::new(),
             })
         })
         .collect()

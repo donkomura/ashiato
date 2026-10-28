@@ -7,6 +7,7 @@ use ashiato_core::lineage::LineageEdge;
 use ashiato_core::query::{QueryBackend, query_signal_rule};
 use ashiato_core::rule::{Rule, RuleSource, Rules, SignalRule};
 use ashiato_core::sequence::ObservedSignal;
+use ashiato_core::validate::streaming_violations;
 use ashiato_duckdb::{Analyzer, AnalyzerSettings, DuckDbBackend, EventStore, PipelineStore};
 use ashiato_pipeline::{EventTime, Manifest};
 use ashiato_testkit::fixture::builtin_fixtures;
@@ -15,16 +16,8 @@ use chrono::TimeDelta;
 use common::{LATENESS_MINUTES, Workspace, start_worker, write_records};
 use serde_json::{Value, json};
 
-// These rules aggregate without time_bin or read the baseline period of events directly, so
-// they cannot be evaluated batch by batch (streaming-pipeline.md 8.4). `rules validate` reports
-// them once its streaming checks are added (段階 21).
-const NOT_BATCHABLE: [&str; 5] = [
-    "cloudtrail_logging_paused",
-    "first_seen_account_region_write",
-    "role_session_outlier",
-    "self_privilege_escalation",
-    "temporary_credential_ip_change",
-];
+// The shortest batch of these tests. A time_bin that divides it also divides the 24-hour batch.
+const BATCH: &str = "1h";
 
 fn builtin_rules() -> Rules {
     Rules::new([RuleSource::builtin().unwrap()]).unwrap()
@@ -38,7 +31,10 @@ fn batchable_signal_rules(rules: &Rules) -> Vec<SignalRule> {
             Rule::Signal(rule) => Some(rule),
             Rule::Scenario(_) => None,
         })
-        .filter(|rule| !NOT_BATCHABLE.contains(&rule.id.as_str()) && !rule.sql.contains("baseline"))
+        .filter(|rule| {
+            streaming_violations(rule, BATCH.parse().unwrap()).is_empty()
+                && !rule.sql.contains("baseline")
+        })
         .cloned()
         .collect()
 }
