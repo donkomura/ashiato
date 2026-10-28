@@ -5,14 +5,13 @@ use std::path::{Path, PathBuf};
 
 use ashiato_core::context::{Context, ContextError};
 use ashiato_core::{AnalysisWindow, Duration, WindowError};
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use serde::de::{self, Visitor};
 use serde::{Deserialize, Deserializer};
 use sha2::{Digest, Sha256};
 
 const BUILTIN_RULES: &str = "builtin";
-// TODO: The lookback is fixed until the context file (stage 18) can set baseline.lookback.
-const BASELINE_LOOKBACK: TimeDelta = TimeDelta::days(30);
+const CONTEXT_KEY: &str = "context";
 // These sections only decide the speed and the placement of the run and do not change its
 // output, so a run moved to another placement keeps the same digest.
 const EXCLUDED_FROM_DIGEST: [&str; 2] = ["placement", "broker"];
@@ -161,6 +160,8 @@ struct RawPlan {
     rulesets: Vec<String>,
     #[serde(default)]
     rule: Vec<String>,
+    #[serde(default)]
+    context: Option<PathBuf>,
     pipeline: PipelineSettings,
     placement: Placement,
     #[serde(default)]
@@ -217,10 +218,14 @@ impl RunPlan {
                 endpoint_url: raw.source.endpoint_url,
             },
         };
+        let context = match &raw.context {
+            Some(path) => load_context(&resolve(base_dir, path))?,
+            None => Context::default(),
+        };
         let window = AnalysisWindow::new(
             raw.analysis_window.since,
             raw.analysis_window.until,
-            BASELINE_LOOKBACK,
+            context.baseline.lookback.to_time_delta(),
         )?;
         let rules = raw
             .rules
@@ -248,9 +253,9 @@ impl RunPlan {
             pipeline: raw.pipeline,
             placement: raw.placement,
             broker: raw.broker,
-            context: Context::default(),
+            digest: digest(text, context.digest())?,
+            context,
             window,
-            digest: digest(text)?,
         })
     }
 
@@ -283,13 +288,30 @@ fn resolve(base_dir: &Path, path: &Path) -> PathBuf {
     base_dir.join(path).components().collect()
 }
 
+fn load_context(path: &Path) -> Result<Context, PlanError> {
+    let text = fs::read_to_string(path).map_err(|source| PlanError::ReadContext {
+        path: path.to_path_buf(),
+        source,
+    })?;
+    Context::parse(&text).map_err(|source| PlanError::Context {
+        path: path.to_path_buf(),
+        source,
+    })
+}
+
 // The digest is taken over the YAML values rather than the text, so that comments, layout
 // and key order do not change it.
-fn digest(text: &str) -> Result<String, PlanError> {
+fn digest(text: &str, context_digest: Option<&str>) -> Result<String, PlanError> {
     let mut plan: serde_yaml::Value = serde_yaml::from_str(text)?;
     if let Some(sections) = plan.as_mapping_mut() {
         for key in EXCLUDED_FROM_DIGEST {
             sections.remove(key);
+        }
+        // Resuming with an edited context file would mix the state of both versions
+        // (streaming-pipeline.md 10), so the digest follows the content of the file instead of
+        // its path.
+        if let Some(context_digest) = context_digest {
+            sections.insert(CONTEXT_KEY.into(), context_digest.into());
         }
     }
     let plan = serde_json::to_value(&plan).map_err(PlanError::Digest)?;
