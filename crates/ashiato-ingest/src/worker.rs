@@ -45,6 +45,8 @@ pub enum SourceError {
         #[source]
         source: std::io::Error,
     },
+    #[error(transparent)]
+    S3(Box<crate::s3::S3Error>),
 }
 
 #[async_trait]

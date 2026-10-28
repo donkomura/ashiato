@@ -1,9 +1,15 @@
 use std::ops::Range;
+use std::time::Duration;
 
 use ashiato_pipeline::{EventTime, Manifest, ManifestEntry, PartitionManifest};
+use async_trait::async_trait;
+use aws_sdk_s3::Client;
 use chrono::{Days, TimeDelta};
 
 use crate::local::{ListScope, arrange, is_excluded_directory, is_log_file, parse_file_name};
+use crate::worker::{FileSource, SourceError};
+
+type BoxError = Box<dyn std::error::Error + Send + Sync>;
 
 const SCHEME: &str = "s3://";
 const LOG_ROOT: &str = "AWSLogs";
@@ -60,6 +66,64 @@ pub struct S3Listing {
     pub unrecognized: Vec<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Listing {
+    pub prefixes: Vec<String>,
+    pub keys: Vec<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RetryPolicy {
+    pub max_attempts: u32,
+    pub initial_backoff: Duration,
+    pub max_backoff: Duration,
+}
+
+impl Default for RetryPolicy {
+    fn default() -> Self {
+        todo!()
+    }
+}
+
+pub struct S3Source {
+    client: Client,
+    retry: RetryPolicy,
+}
+
+impl S3Source {
+    pub async fn connect(_bucket: &str, _endpoint_url: Option<&str>) -> Self {
+        todo!()
+    }
+
+    pub fn from_conf(_config: aws_sdk_s3::Config) -> Self {
+        todo!()
+    }
+
+    pub fn with_retry(self, retry: RetryPolicy) -> Self {
+        Self { retry, ..self }
+    }
+
+    pub async fn list(
+        &self,
+        _location: &S3Location,
+        _scope: &ListScope<'_>,
+    ) -> Result<S3Listing, S3Error> {
+        let _ = (&self.client, self.retry);
+        todo!()
+    }
+
+    pub async fn list_delimited(&self, _bucket: &str, _prefix: &str) -> Result<Listing, S3Error> {
+        todo!()
+    }
+}
+
+#[async_trait]
+impl FileSource for S3Source {
+    async fn read(&self, _entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
+        todo!()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum S3Error {
     #[error("invalid S3 URI {uri}: {reason}")]
@@ -69,6 +133,29 @@ pub enum S3Error {
          point source.uri at one of them and use accounts and regions instead"
     )]
     BelowTrailRoot { prefix: String },
+    #[error("{operation} {target} failed")]
+    Request {
+        operation: &'static str,
+        target: String,
+        #[source]
+        source: BoxError,
+    },
+    #[error("{operation} {target} failed {attempts} times")]
+    RetriesExhausted {
+        operation: &'static str,
+        target: String,
+        attempts: u32,
+        #[source]
+        source: BoxError,
+    },
+    #[error("{uri} was listed but no longer exists")]
+    Missing { uri: String },
+    #[error("{uri} changed after it was listed: the ETag was {expected} but is now {actual:?}")]
+    EtagMismatch {
+        uri: String,
+        expected: String,
+        actual: Option<String>,
+    },
 }
 
 // CloudTrail delivers to <bucket>/[<key prefix>/]AWSLogs/[<org-id>/]<account>/CloudTrail/....
@@ -152,5 +239,11 @@ pub fn arrange_objects(bucket: &str, objects: Vec<S3Object>, scope: &ListScope<'
     S3Listing {
         manifest: Manifest { partitions },
         unrecognized,
+    }
+}
+
+impl From<S3Error> for SourceError {
+    fn from(error: S3Error) -> Self {
+        Self::S3(Box::new(error))
     }
 }

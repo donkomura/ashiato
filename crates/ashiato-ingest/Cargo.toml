@@ -12,17 +12,19 @@ workspace = true
 arrow-array = "60.0.0"
 ashiato-pipeline = { version = "0.1.0", path = "../ashiato-pipeline" }
 async-trait = "0.1.92"
+aws-config = { version = "1.13.0", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.155.0"
 chrono = "0.4.45"
 flate2 = "1.1.10"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = { version = "1.0.154", features = ["raw_value"] }
 sha2 = "0.11.1"
 thiserror = "2.0.21"
-tokio = { version = "1.54.1", features = ["fs", "rt", "sync"] }
+tokio = { version = "1.54.1", features = ["fs", "rt", "sync", "time"] }
 
 [dev-dependencies]
 ashiato-duckdb = { version = "0.1.0", path = "../ashiato-duckdb" }
 ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
 duckdb = { version = "1.20000.0", features = ["appender-arrow"] }
 tempfile = "3.27.0"
-tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync", "time"] }
+tokio = { version = "1.54.1", features = ["io-util", "macros", "net", "rt-multi-thread", "sync", "time"] }
