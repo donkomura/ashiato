@@ -355,6 +355,7 @@ dependencies = [
  "chrono",
  "duckdb",
  "flate2",
+ "futures-util",
  "serde",
  "serde_json",
  "sha2",

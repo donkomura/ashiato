@@ -3,10 +3,20 @@ use std::time::Duration;
 
 use ashiato_pipeline::{EventTime, Manifest, ManifestEntry, PartitionManifest};
 use async_trait::async_trait;
+use aws_config::BehaviorVersion;
+use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3::Client;
+use aws_sdk_s3::config::Region;
+use aws_sdk_s3::config::http::HttpResponse;
+use aws_sdk_s3::config::retry::RetryConfig;
+use aws_sdk_s3::error::{DisplayErrorContext, ProvideErrorMetadata, SdkError};
 use chrono::{Days, TimeDelta};
+use futures_util::{StreamExt, TryStreamExt, stream};
 
-use crate::local::{ListScope, arrange, is_excluded_directory, is_log_file, parse_file_name};
+use crate::local::{
+    ListScope, arrange, is_account_id, is_excluded_directory, is_log_file, is_region,
+    parse_file_name,
+};
 use crate::worker::{FileSource, SourceError};
 
 type BoxError = Box<dyn std::error::Error + Send + Sync>;
@@ -15,6 +25,21 @@ const SCHEME: &str = "s3://";
 const LOG_ROOT: &str = "AWSLogs";
 const ORGANIZATION_PREFIX: &str = "o-";
 const DAY_PREFIX_FORMAT: &str = "%Y/%m/%d/";
+const SERVICE_DIRECTORY: &str = "CloudTrail/";
+const DELIMITER: &str = "/";
+const CONCURRENT_REQUESTS: usize = 16;
+const DEFAULT_REGION: &str = "us-east-1";
+const LEGACY_EU_LOCATION: &str = "EU";
+const LEGACY_EU_REGION: &str = "eu-west-1";
+// S3 reports the version of an object written while versioning was never enabled as "null".
+const NULL_VERSION: &str = "null";
+const TOO_MANY_REQUESTS: u16 = 429;
+const RETRYABLE_CODES: [&str; 4] = [
+    "SlowDown",
+    "RequestTimeout",
+    "Throttling",
+    "ThrottlingException",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct S3Location {
@@ -81,7 +106,19 @@ pub struct RetryPolicy {
 
 impl Default for RetryPolicy {
     fn default() -> Self {
-        todo!()
+        Self {
+            max_attempts: 10,
+            initial_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(20),
+        }
+    }
+}
+
+impl RetryPolicy {
+    fn backoff(&self, retry: u32) -> Duration {
+        self.initial_backoff
+            .saturating_mul(2u32.saturating_pow(retry))
+            .min(self.max_backoff)
     }
 }
 
@@ -90,30 +127,230 @@ pub struct S3Source {
     retry: RetryPolicy,
 }
 
+enum Failure {
+    Retryable(BoxError),
+    Final(S3Error),
+}
+
 impl S3Source {
-    pub async fn connect(_bucket: &str, _endpoint_url: Option<&str>) -> Self {
-        todo!()
+    pub async fn connect(bucket: &str, endpoint_url: Option<&str>) -> Self {
+        let region = RegionProviderChain::default_provider().or_else(DEFAULT_REGION);
+        let mut loader = aws_config::defaults(BehaviorVersion::latest()).region(region);
+        if let Some(url) = endpoint_url {
+            loader = loader.endpoint_url(url);
+        }
+        let shared = loader.load().await;
+        // S3 compatible storages such as MinIO address a bucket by the path, not the host name.
+        let builder =
+            aws_sdk_s3::config::Builder::from(&shared).force_path_style(endpoint_url.is_some());
+        let source = Self::from_conf(builder.clone().build());
+        match bucket_region(&source.client, bucket).await {
+            Some(region) => Self::from_conf(builder.region(Region::new(region)).build()),
+            None => source,
+        }
     }
 
-    pub fn from_conf(_config: aws_sdk_s3::Config) -> Self {
-        todo!()
+    // The SDK's own retries are turned off, so that the retries of RetryPolicy also cover a
+    // failure while reading the body and the number of attempts is exactly max_attempts.
+    pub fn from_conf(config: aws_sdk_s3::Config) -> Self {
+        let config = config
+            .to_builder()
+            .retry_config(RetryConfig::disabled())
+            .build();
+        Self {
+            client: Client::from_conf(config),
+            retry: RetryPolicy::default(),
+        }
     }
 
     pub fn with_retry(self, retry: RetryPolicy) -> Self {
         Self { retry, ..self }
     }
 
+    // Lists the date prefixes of the period for each account and region under source.uri, and
+    // finds the accounts and regions from the prefixes when they are not given (4.1 節, 6.1 節).
     pub async fn list(
         &self,
-        _location: &S3Location,
-        _scope: &ListScope<'_>,
+        location: &S3Location,
+        scope: &ListScope<'_>,
     ) -> Result<S3Listing, S3Error> {
-        let _ = (&self.client, self.retry);
-        todo!()
+        let bucket = &location.bucket;
+        let roots = match trail_root(&location.prefix)? {
+            TrailRoot::Organization(root) => vec![root],
+            TrailRoot::AwsLogs(root) => {
+                let listing = self.list_delimited(bucket, &root).await?;
+                let organizations: Vec<String> = subdirectories(&root, &listing.prefixes)
+                    .filter(|name| name.starts_with(ORGANIZATION_PREFIX))
+                    .map(|name| format!("{root}{name}/"))
+                    .collect();
+                std::iter::once(root).chain(organizations).collect()
+            }
+        };
+        let accounts = self
+            .children(bucket, roots, scope.accounts, is_account_id)
+            .await?;
+        let services = accounts
+            .into_iter()
+            .map(|account| format!("{account}{SERVICE_DIRECTORY}"))
+            .collect();
+        let regions = self
+            .children(bucket, services, scope.regions, is_region)
+            .await?;
+        let days = day_prefixes(&scope.period);
+        let prefixes: Vec<String> = regions
+            .iter()
+            .flat_map(|region| days.iter().map(move |day| format!("{region}{day}")))
+            .collect();
+        let objects: Vec<Vec<S3Object>> = stream::iter(&prefixes)
+            .map(|prefix| self.list_objects(bucket, prefix))
+            .buffer_unordered(CONCURRENT_REQUESTS)
+            .try_collect()
+            .await?;
+        Ok(arrange_objects(bucket, objects.concat(), scope))
     }
 
-    pub async fn list_delimited(&self, _bucket: &str, _prefix: &str) -> Result<Listing, S3Error> {
-        todo!()
+    async fn children(
+        &self,
+        bucket: &str,
+        parents: Vec<String>,
+        given: Option<&[String]>,
+        valid: fn(&str) -> bool,
+    ) -> Result<Vec<String>, S3Error> {
+        if let Some(given) = given {
+            return Ok(parents
+                .iter()
+                .flat_map(|parent| given.iter().map(move |name| format!("{parent}{name}/")))
+                .collect());
+        }
+        let listings: Vec<(String, Listing)> = stream::iter(parents)
+            .map(|parent| async move {
+                let listing = self.list_delimited(bucket, &parent).await?;
+                Ok::<_, S3Error>((parent, listing))
+            })
+            .buffer_unordered(CONCURRENT_REQUESTS)
+            .try_collect()
+            .await?;
+        Ok(listings
+            .iter()
+            .flat_map(|(parent, listing)| {
+                subdirectories(parent, &listing.prefixes)
+                    .filter(|name| valid(name))
+                    .map(move |name| format!("{parent}{name}/"))
+            })
+            .collect())
+    }
+
+    pub async fn list_delimited(&self, bucket: &str, prefix: &str) -> Result<Listing, S3Error> {
+        let target = object_uri(bucket, prefix);
+        let mut listing = Listing::default();
+        let mut token: Option<String> = None;
+        loop {
+            let page = self
+                .retrying(&target, || async {
+                    self.client
+                        .list_objects_v2()
+                        .bucket(bucket)
+                        .prefix(prefix)
+                        .delimiter(DELIMITER)
+                        .set_continuation_token(token.clone())
+                        .send()
+                        .await
+                        .map_err(|error| request_failure("ListObjectsV2", &target, &error))
+                })
+                .await?;
+            listing.prefixes.extend(
+                page.common_prefixes()
+                    .iter()
+                    .filter_map(|common| common.prefix().map(str::to_owned)),
+            );
+            listing.keys.extend(
+                page.contents()
+                    .iter()
+                    .filter_map(|object| object.key().map(str::to_owned)),
+            );
+            token = page.next_continuation_token().map(str::to_owned);
+            if page.is_truncated() != Some(true) || token.is_none() {
+                return Ok(listing);
+            }
+        }
+    }
+
+    // ListObjectVersions returns the VersionId with the ETag and the size at the price of a
+    // LIST request per 1000 objects, while ListObjectsV2 would need a HeadObject per file to
+    // learn the VersionId (5.4 節).
+    // https://docs.aws.amazon.com/AmazonS3/latest/API/API_ListObjectVersions.html
+    async fn list_objects(&self, bucket: &str, prefix: &str) -> Result<Vec<S3Object>, S3Error> {
+        let target = object_uri(bucket, prefix);
+        let mut objects = Vec::new();
+        let mut key_marker: Option<String> = None;
+        let mut version_marker: Option<String> = None;
+        loop {
+            let page = self
+                .retrying(&target, || async {
+                    self.client
+                        .list_object_versions()
+                        .bucket(bucket)
+                        .prefix(prefix)
+                        .delimiter(DELIMITER)
+                        .set_key_marker(key_marker.clone())
+                        .set_version_id_marker(version_marker.clone())
+                        .send()
+                        .await
+                        .map_err(|error| request_failure("ListObjectVersions", &target, &error))
+                })
+                .await?;
+            // A key whose latest version is a delete marker has no latest version here, so a
+            // deleted log is not listed.
+            objects.extend(
+                page.versions()
+                    .iter()
+                    .filter(|version| version.is_latest() == Some(true))
+                    .filter_map(|version| {
+                        Some(S3Object {
+                            key: version.key()?.to_owned(),
+                            version_id: version
+                                .version_id()
+                                .filter(|id| *id != NULL_VERSION)
+                                .map(str::to_owned),
+                            etag: version.e_tag().map(str::to_owned),
+                            size: version
+                                .size()
+                                .and_then(|size| u64::try_from(size).ok())
+                                .unwrap_or(0),
+                        })
+                    }),
+            );
+            key_marker = page.next_key_marker().map(str::to_owned);
+            version_marker = page.next_version_id_marker().map(str::to_owned);
+            if page.is_truncated() != Some(true) || key_marker.is_none() {
+                return Ok(objects);
+            }
+        }
+    }
+
+    async fn retrying<T, F, Fut>(&self, target: &str, mut attempt: F) -> Result<T, S3Error>
+    where
+        F: FnMut() -> Fut,
+        Fut: Future<Output = Result<T, Failure>>,
+    {
+        let mut attempts = 0;
+        loop {
+            attempts += 1;
+            match attempt().await {
+                Ok(value) => return Ok(value),
+                Err(Failure::Final(error)) => return Err(error),
+                Err(Failure::Retryable(source)) if attempts >= self.retry.max_attempts => {
+                    return Err(S3Error::RetriesExhausted {
+                        target: target.to_owned(),
+                        attempts,
+                        source,
+                    });
+                }
+                Err(Failure::Retryable(_)) => {
+                    tokio::time::sleep(self.retry.backoff(attempts - 1)).await;
+                }
+            }
+        }
     }
 }
 
@@ -121,6 +358,73 @@ impl S3Source {
 impl FileSource for S3Source {
     async fn read(&self, _entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
         todo!()
+    }
+}
+
+// Trail buckets often live in a region other than the investigator's default, and S3
+// rejects requests sent to the wrong region. Without s3:GetBucketLocation, the
+// configured region is used as is.
+async fn bucket_region(client: &Client, bucket: &str) -> Option<String> {
+    let output = client
+        .get_bucket_location()
+        .bucket(bucket)
+        .send()
+        .await
+        .ok()?;
+    let region = match output
+        .location_constraint()
+        .map(|location| location.as_str())
+    {
+        None | Some("") => DEFAULT_REGION,
+        Some(LEGACY_EU_LOCATION) => LEGACY_EU_REGION,
+        Some(region) => region,
+    };
+    Some(region.to_owned())
+}
+
+fn subdirectories<'a>(parent: &'a str, prefixes: &'a [String]) -> impl Iterator<Item = &'a str> {
+    prefixes.iter().filter_map(move |prefix| {
+        prefix
+            .strip_prefix(parent)?
+            .strip_suffix('/')
+            .filter(|name| !name.is_empty() && !name.contains('/'))
+    })
+}
+
+// S3 asks clients to retry 503 SlowDown and other server errors with growing intervals.
+// https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance-design-patterns.html#optimizing-performance-timeouts-retries
+fn request_failure<E>(
+    operation: &'static str,
+    target: &str,
+    error: &SdkError<E, HttpResponse>,
+) -> Failure
+where
+    E: ProvideErrorMetadata + std::error::Error + 'static,
+{
+    let message: BoxError = DisplayErrorContext(error).to_string().into();
+    let retryable = match error {
+        SdkError::TimeoutError(_) | SdkError::DispatchFailure(_) | SdkError::ResponseError(_) => {
+            true
+        }
+        SdkError::ServiceError(service) => {
+            let status = service.raw().status().as_u16();
+            status >= 500
+                || status == TOO_MANY_REQUESTS
+                || service
+                    .err()
+                    .code()
+                    .is_some_and(|code| RETRYABLE_CODES.contains(&code))
+        }
+        _ => false,
+    };
+    if retryable {
+        Failure::Retryable(message)
+    } else {
+        Failure::Final(S3Error::Request {
+            operation,
+            target: target.to_owned(),
+            source: message,
+        })
     }
 }
 
@@ -140,9 +444,8 @@ pub enum S3Error {
         #[source]
         source: BoxError,
     },
-    #[error("{operation} {target} failed {attempts} times")]
+    #[error("requests for {target} failed {attempts} times")]
     RetriesExhausted {
-        operation: &'static str,
         target: String,
         attempts: u32,
         #[source]
