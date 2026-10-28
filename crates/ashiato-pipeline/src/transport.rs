@@ -10,6 +10,8 @@ pub enum TransportError {
     Closed(PartitionId),
     #[error("redelivering the messages of partition {0} is not supported in a single process")]
     RedeliveryUnsupported(PartitionId),
+    #[error("the message broker failed")]
+    Broker(#[source] Box<dyn std::error::Error + Send + Sync>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
