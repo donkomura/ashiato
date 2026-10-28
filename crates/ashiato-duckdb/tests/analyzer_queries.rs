@@ -1,9 +1,7 @@
 mod common;
 
-use std::collections::BTreeMap;
 use std::path::Path;
 
-use ashiato_core::AnalysisWindow;
 use ashiato_core::fixture::fixture_window;
 use ashiato_core::lineage::LineageEdge;
 use ashiato_core::query::{QueryBackend, query_signal_rule};
@@ -12,10 +10,9 @@ use ashiato_core::sequence::ObservedSignal;
 use ashiato_duckdb::{Analyzer, AnalyzerSettings, DuckDbBackend, EventStore, PipelineStore};
 use ashiato_pipeline::{EventTime, Manifest};
 use ashiato_testkit::fixture::builtin_fixtures;
-use ashiato_testkit::log_file::LogFile;
 use ashiato_testkit::record::RecordBuilder;
-use chrono::{DateTime, TimeDelta, Utc};
-use common::{LATENESS_MINUTES, Workspace, start_worker};
+use chrono::TimeDelta;
+use common::{LATENESS_MINUTES, Workspace, start_worker, write_records};
 use serde_json::{Value, json};
 
 // These rules aggregate without time_bin or read the baseline period of events directly, so
@@ -44,44 +41,6 @@ fn batchable_signal_rules(rules: &Rules) -> Vec<SignalRule> {
         .filter(|rule| !NOT_BATCHABLE.contains(&rule.id.as_str()) && !rule.sql.contains("baseline"))
         .cloned()
         .collect()
-}
-
-fn event_time(record: &Value) -> EventTime {
-    DateTime::parse_from_rfc3339(record["eventTime"].as_str().unwrap())
-        .unwrap()
-        .with_timezone(&Utc)
-}
-
-// Places each record in the log file of its account and region that CloudTrail would deliver
-// within ten minutes, so that no record is late.
-fn write_records(workspace: &Workspace, records: Vec<Value>, window: &AnalysisWindow) {
-    let mut files: BTreeMap<(String, String, i64), Vec<Value>> = BTreeMap::new();
-    for record in records {
-        let time = event_time(&record);
-        if time < window.baseline_since() || time >= window.until() - TimeDelta::hours(1) {
-            continue;
-        }
-        let five_minutes = TimeDelta::minutes(5).num_seconds();
-        let file_time = (time.timestamp() / five_minutes + 2) * five_minutes;
-        files
-            .entry((
-                record["recipientAccountId"].as_str().unwrap().to_owned(),
-                record["awsRegion"].as_str().unwrap().to_owned(),
-                file_time,
-            ))
-            .or_default()
-            .push(record);
-    }
-    for ((account, region, file_time), records) in files {
-        workspace.write(&LogFile {
-            records,
-            ..LogFile::new(
-                account,
-                region,
-                DateTime::from_timestamp(file_time, 0).unwrap(),
-            )
-        });
-    }
 }
 
 fn fixture_records() -> Vec<Value> {

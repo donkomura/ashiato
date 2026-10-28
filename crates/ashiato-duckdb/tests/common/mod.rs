@@ -10,7 +10,10 @@ use ashiato_ingest::{
 };
 use ashiato_pipeline::{ChannelReader, EventTime, Manifest, Position, partition_channels};
 use ashiato_testkit::log_file::{LogFile, write_log_file};
-use chrono::{TimeDelta, TimeZone, Utc};
+use std::collections::BTreeMap;
+
+use ashiato_core::AnalysisWindow;
+use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use serde_json::Value;
 use tempfile::TempDir;
 use tokio::task::JoinHandle;
@@ -154,4 +157,42 @@ pub fn query_strings(database: &Path, sql: &str) -> Vec<String> {
         .unwrap()
         .collect::<Result<_, _>>()
         .unwrap()
+}
+
+pub fn event_time(record: &Value) -> EventTime {
+    DateTime::parse_from_rfc3339(record["eventTime"].as_str().unwrap())
+        .unwrap()
+        .with_timezone(&Utc)
+}
+
+// Places each record in the log file of its account and region that CloudTrail would deliver
+// within ten minutes, so that no record is late.
+pub fn write_records(workspace: &Workspace, records: Vec<Value>, window: &AnalysisWindow) {
+    let mut files: BTreeMap<(String, String, i64), Vec<Value>> = BTreeMap::new();
+    for record in records {
+        let time = event_time(&record);
+        if time < window.baseline_since() || time >= window.until() - TimeDelta::hours(1) {
+            continue;
+        }
+        let five_minutes = TimeDelta::minutes(5).num_seconds();
+        let file_time = (time.timestamp() / five_minutes + 2) * five_minutes;
+        files
+            .entry((
+                record["recipientAccountId"].as_str().unwrap().to_owned(),
+                record["awsRegion"].as_str().unwrap().to_owned(),
+                file_time,
+            ))
+            .or_default()
+            .push(record);
+    }
+    for ((account, region, file_time), records) in files {
+        workspace.write(&LogFile {
+            records,
+            ..LogFile::new(
+                account,
+                region,
+                DateTime::from_timestamp(file_time, 0).unwrap(),
+            )
+        });
+    }
 }
