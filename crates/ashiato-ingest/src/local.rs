@@ -74,14 +74,10 @@ pub enum ListError {
     NonUtf8Path(PathBuf),
 }
 
-struct LogFileName {
+pub(crate) struct LogFileName {
     partition: PartitionId,
     file_time: EventTime,
-}
-
-struct FoundFile {
-    path: PathBuf,
-    file_time: EventTime,
+    name: String,
 }
 
 pub fn list_local(root: &Path, scope: &ListScope<'_>) -> Result<LocalListing, ListError> {
@@ -92,34 +88,21 @@ pub fn list_local(root: &Path, scope: &ListScope<'_>) -> Result<LocalListing, Li
     let mut paths = Vec::new();
     collect_log_files(&root, &mut paths)?;
 
-    let mut partitions: BTreeMap<PartitionId, Vec<FoundFile>> = scope
-        .given_partitions()
-        .into_iter()
-        .map(|partition| (partition, Vec::new()))
-        .collect();
+    let mut found = Vec::new();
     let mut unrecognized = Vec::new();
     for path in paths {
-        let Some(name) = path
+        match path
             .file_name()
             .and_then(OsStr::to_str)
             .and_then(parse_file_name)
-        else {
-            unrecognized.push(path);
-            continue;
-        };
-        if scope.includes(&name) {
-            partitions
-                .entry(name.partition)
-                .or_default()
-                .push(FoundFile {
-                    path,
-                    file_time: name.file_time,
-                });
+        {
+            Some(name) => found.push((name, path)),
+            None => unrecognized.push(path),
         }
     }
     unrecognized.sort();
 
-    let partitions = partitions
+    let partitions = arrange(scope, found)
         .into_iter()
         .map(|(partition, files)| {
             Ok(PartitionManifest {
@@ -134,25 +117,50 @@ pub fn list_local(root: &Path, scope: &ListScope<'_>) -> Result<LocalListing, Li
     })
 }
 
-fn manifest_entries(mut files: Vec<FoundFile>) -> Result<Vec<ManifestEntry>, ListError> {
-    files.sort_by(|left, right| {
-        (left.file_time, left.path.file_name(), &left.path).cmp(&(
-            right.file_time,
-            right.path.file_name(),
-            &right.path,
-        ))
-    });
+// Files of a partition are read in the order of their file time, and of their file name when
+// the times are equal, so that the files of the organization trail and the account trail of a
+// partition are merged into one sequence (5.1 節, 6.1 節).
+pub(crate) fn arrange<T: Ord>(
+    scope: &ListScope<'_>,
+    files: Vec<(LogFileName, T)>,
+) -> Vec<(PartitionId, Vec<(EventTime, T)>)> {
+    let mut partitions: BTreeMap<PartitionId, Vec<(EventTime, String, T)>> = scope
+        .given_partitions()
+        .into_iter()
+        .map(|partition| (partition, Vec::new()))
+        .collect();
+    for (name, file) in files {
+        if scope.includes(&name) {
+            partitions
+                .entry(name.partition)
+                .or_default()
+                .push((name.file_time, name.name, file));
+        }
+    }
+    partitions
+        .into_iter()
+        .map(|(partition, mut files)| {
+            files.sort();
+            let files = files
+                .into_iter()
+                .map(|(file_time, _, file)| (file_time, file))
+                .collect();
+            (partition, files)
+        })
+        .collect()
+}
+
+fn manifest_entries(files: Vec<(EventTime, PathBuf)>) -> Result<Vec<ManifestEntry>, ListError> {
     (0..)
         .zip(files)
-        .map(|(file_seq, file)| {
-            let size = fs::metadata(&file.path)
+        .map(|(file_seq, (file_time, path))| {
+            let size = fs::metadata(&path)
                 .map_err(|source| ListError::Io {
-                    path: file.path.clone(),
+                    path: path.clone(),
                     source,
                 })?
                 .len();
-            let uri = file
-                .path
+            let uri = path
                 .into_os_string()
                 .into_string()
                 .map_err(|path| ListError::NonUtf8Path(path.into()))?;
@@ -162,7 +170,7 @@ fn manifest_entries(mut files: Vec<FoundFile>) -> Result<Vec<ManifestEntry>, Lis
                 version_id: None,
                 etag: None,
                 size,
-                file_time: file.file_time,
+                file_time,
             })
         })
         .collect()
@@ -177,22 +185,42 @@ fn collect_log_files(dir: &Path, files: &mut Vec<PathBuf>) -> Result<(), ListErr
         let entry = entry.map_err(io_error)?;
         let path = entry.path();
         if entry.file_type().map_err(io_error)?.is_dir() {
-            if !EXCLUDED_DIRECTORIES
-                .iter()
-                .any(|name| entry.file_name() == *name)
+            if !entry
+                .file_name()
+                .to_str()
+                .is_some_and(is_excluded_directory)
             {
                 collect_log_files(&path, files)?;
             }
-        } else if path.to_string_lossy().ends_with(LOG_FILE_SUFFIX) {
+        } else if is_log_file(&path.to_string_lossy()) {
             files.push(path);
         }
     }
     Ok(())
 }
 
+pub(crate) fn is_excluded_directory(name: &str) -> bool {
+    EXCLUDED_DIRECTORIES.contains(&name)
+}
+
+pub(crate) fn is_log_file(name: &str) -> bool {
+    name.ends_with(LOG_FILE_SUFFIX)
+}
+
+pub(crate) fn is_account_id(segment: &str) -> bool {
+    segment.len() == ACCOUNT_ID_LENGTH && segment.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+pub(crate) fn is_region(segment: &str) -> bool {
+    !segment.is_empty()
+        && segment
+            .bytes()
+            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+}
+
 // CloudTrail names log files <account>_CloudTrail_<region>_<YYYYMMDDTHHmmZ>_<unique>.json.gz.
 // https://docs.aws.amazon.com/awscloudtrail/latest/userguide/get-and-view-cloudtrail-log-files.html
-fn parse_file_name(name: &str) -> Option<LogFileName> {
+pub(crate) fn parse_file_name(name: &str) -> Option<LogFileName> {
     let stem = name.strip_suffix(LOG_FILE_SUFFIX)?;
     let mut fields = stem.splitn(5, '_');
     let (account, service, region, time, unique) = (
@@ -202,13 +230,9 @@ fn parse_file_name(name: &str) -> Option<LogFileName> {
         fields.next()?,
         fields.next()?,
     );
-    let valid = account.len() == ACCOUNT_ID_LENGTH
-        && account.bytes().all(|byte| byte.is_ascii_digit())
+    let valid = is_account_id(account)
         && service == "CloudTrail"
-        && !region.is_empty()
-        && region
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+        && is_region(region)
         && !unique.is_empty();
     if !valid {
         return None;
@@ -219,5 +243,6 @@ fn parse_file_name(name: &str) -> Option<LogFileName> {
     Some(LogFileName {
         partition: PartitionId::new(account, region),
         file_time,
+        name: name.to_owned(),
     })
 }
