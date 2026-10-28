@@ -78,6 +78,22 @@ pub enum NatsError {
     },
     #[error("failed to acknowledge the committed messages")]
     Ack(#[source] async_nats::Error),
+    #[error("failed to subscribe to {subject}")]
+    Subscribe {
+        subject: String,
+        #[source]
+        source: async_nats::Error,
+    },
+    #[error("failed to send the request on {subject}")]
+    Request {
+        subject: String,
+        #[source]
+        source: async_nats::Error,
+    },
+    #[error("the analyzer refused the request on {subject}: {reason}")]
+    Refused { subject: String, reason: String },
+    #[error("the control message is malformed")]
+    ControlReply(#[source] serde_json::Error),
 }
 
 impl From<NatsError> for TransportError {

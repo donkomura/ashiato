@@ -13,6 +13,6 @@ pub use codec::{
     validate_run_id,
 };
 pub use config::{CapacityError, check_capacity, consumer_config, max_ack_pending, stream_config};
-pub use control::{ControlServer, ControlService, NatsControl, serve_control};
+pub use control::{ControlServer, ControlService, NatsControl, control_subject, serve_control};
 pub use reader::NatsReader;
 pub use writer::NatsWriter;
