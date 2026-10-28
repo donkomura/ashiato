@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
+use std::net::IpAddr;
 
 use ipnet::IpNet;
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
-use crate::Duration;
+use crate::lineage::Origin;
 use crate::rule::Rules;
+use crate::{Duration, SignalRow};
 
 #[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
@@ -139,9 +141,46 @@ impl Context {
         }
         Ok(rules)
     }
+
+    pub(crate) fn suppresses(&self, signal_id: &str, origin: &Origin, row: &SignalRow) -> bool {
+        self.suppress
+            .iter()
+            .any(|entry| entry.matches(signal_id, origin, row))
+    }
+
+    // A source that is not an IP address, such as the host name of an AWS service, is never
+    // inside the organization's networks.
+    pub(crate) fn is_internal_source(&self, source_ip: &str) -> bool {
+        source_ip.parse::<IpAddr>().is_ok_and(|ip| {
+            self.organization
+                .internal_cidrs
+                .iter()
+                .any(|cidr| cidr.contains(&ip))
+        })
+    }
 }
 
 impl Suppression {
+    fn matches(&self, signal_id: &str, origin: &Origin, row: &SignalRow) -> bool {
+        self.origin
+            .as_deref()
+            .is_none_or(|pattern| wildcard_match(pattern, &origin.id))
+            && self
+                .signals
+                .as_ref()
+                .is_none_or(|ids| ids.iter().any(|id| id == signal_id))
+            && self.signal.as_deref().is_none_or(|id| id == signal_id)
+            && self
+                .principal_key
+                .as_deref()
+                .is_none_or(|key| key == row.principal_key)
+            && self.attrs.iter().all(|(name, pattern)| {
+                row.attrs
+                    .get(name)
+                    .is_some_and(|value| wildcard_match(pattern, value))
+            })
+    }
+
     fn is_empty(&self) -> bool {
         self.origin.is_none()
             && self.signals.is_none()
@@ -154,6 +193,25 @@ impl Suppression {
 fn split_param(key: &str) -> Option<(&str, &str)> {
     key.split_once('.')
         .filter(|(rule_id, param)| !rule_id.is_empty() && !param.is_empty())
+}
+
+fn wildcard_match(pattern: &str, text: &str) -> bool {
+    let mut parts = pattern.split('*');
+    let first = parts.next().unwrap_or_default();
+    let Some(mut rest) = text.strip_prefix(first) else {
+        return false;
+    };
+    let mut middle: Vec<&str> = parts.collect();
+    let Some(last) = middle.pop() else {
+        return rest.is_empty();
+    };
+    for part in middle {
+        let Some(start) = rest.find(part) else {
+            return false;
+        };
+        rest = &rest[start + part.len()..];
+    }
+    rest.ends_with(last)
 }
 
 fn sha256(text: &str) -> String {

@@ -174,7 +174,7 @@ pub fn correlate(
     rules: &Rules,
     observed: Vec<ObservedSignal>,
     edges: Vec<LineageEdge>,
-    _context: &Context,
+    context: &Context,
 ) -> Analysis {
     correlate_with(
         rules,
@@ -182,6 +182,7 @@ pub fn correlate(
         edges,
         DataAvailability::default(),
         Vec::new(),
+        context,
     )
 }
 
@@ -192,10 +193,10 @@ pub fn correlate_available(
     observed: Vec<ObservedSignal>,
     edges: Vec<LineageEdge>,
     data: DataAvailability,
-    _context: &Context,
+    context: &Context,
 ) -> Analysis {
     let skipped = skipped_rules(rules, &data);
-    correlate_with(rules, observed, edges, data, skipped)
+    correlate_with(rules, observed, edges, data, skipped, context)
 }
 
 fn correlate_with(
@@ -204,9 +205,12 @@ fn correlate_with(
     edges: Vec<LineageEdge>,
     data: DataAvailability,
     skipped: Vec<RuleSkippedRecord>,
+    context: &Context,
 ) -> Analysis {
     let runnable = |id: &str| skipped.iter().all(|record| record.rule_id != id);
-    observed.retain(|signal| runnable(&signal.signal_id));
+    observed.retain(|signal| {
+        runnable(&signal.signal_id) && !from_internal_source(rules, context, signal)
+    });
     let graph = LineageGraph::new(edges);
 
     observed.sort_by_key(|signal| signal.row.start_time);
@@ -221,6 +225,11 @@ fn correlate_with(
             && !warnings.contains(&warning)
         {
             warnings.push(warning);
+        }
+        // Suppression waits for the origin, since allow lists are mostly written for an origin
+        // (design.md 8).
+        if context.suppresses(&signal.signal_id, &resolution.origin, &signal.row) {
+            continue;
         }
         origins
             .entry(resolution.origin.id.clone())
@@ -278,6 +287,11 @@ pub fn skipped_rules(rules: &Rules, data: &DataAvailability) -> Vec<RuleSkippedR
             })
         })
         .collect()
+}
+
+fn from_internal_source(rules: &Rules, context: &Context, signal: &ObservedSignal) -> bool {
+    matches!(rules.get(&signal.signal_id), Some(Rule::Signal(rule)) if rule.external_source_only)
+        && context.is_internal_source(&signal.row.source_ip)
 }
 
 fn missing_data(rule: &SignalRule, data: &DataAvailability) -> BTreeSet<DataRequirement> {
