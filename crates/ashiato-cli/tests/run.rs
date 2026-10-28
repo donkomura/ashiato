@@ -405,34 +405,15 @@ fn files_that_do_not_follow_the_cloudtrail_layout_are_reported() {
 
 #[test]
 fn settings_that_are_not_implemented_yet_are_rejected() {
-    for (name, plan, setting) in [
-        (
-            "distributed",
-            PLAN.replace("mode: single_process", "mode: distributed"),
-            "distributed",
-        ),
-        (
-            "s3",
-            PLAN.replace(
-                "kind: local\n  uri: ./logs",
-                "kind: s3\n  uri: s3://bucket/AWSLogs/",
-            ),
-            "s3",
-        ),
-    ] {
-        let case = RunCase::new();
-        case.write_plan(&plan);
+    let case = RunCase::new();
+    case.write_plan(&PLAN.replace("mode: single_process", "mode: distributed"));
 
-        let output = case.run_output(&[]);
+    let output = case.run_output(&[]);
 
-        assert!(!output.status.success(), "{name}");
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        assert!(stderr.contains(setting), "{name}: {stderr}");
-        assert!(
-            !case.dir.path().join("case/ashiato.duckdb").exists(),
-            "{name}"
-        );
-    }
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("distributed"), "{stderr}");
+    assert!(!case.dir.path().join("case/ashiato.duckdb").exists());
 }
 
 #[test]
@@ -509,6 +490,25 @@ fn max_skew_does_not_change_the_output_except_for_the_plan_digest() {
 
     assert!(!of_type(&without, "signal").is_empty());
     assert_eq!(with, without);
+}
+
+#[test]
+fn an_s3_source_below_the_trail_root_is_rejected_before_the_workspace_is_created() {
+    let case = RunCase::new();
+    case.write_plan(&PLAN.replace(
+        "kind: local\n  uri: ./logs",
+        "kind: s3\n  uri: s3://bucket/AWSLogs/111111111111/CloudTrail/",
+    ));
+
+    let output = case.run_output(&[]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("AWSLogs/111111111111/CloudTrail/"),
+        "{stderr}"
+    );
+    assert!(!case.dir.path().join("case/ashiato.duckdb").exists());
 }
 
 fn skipped_rule_ids(lines: &[Value]) -> Vec<&str> {
