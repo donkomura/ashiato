@@ -3,10 +3,11 @@ use std::sync::Arc;
 
 use anyhow::{Context, bail};
 use ashiato_core::Severity;
-use ashiato_core::analysis::correlate_available;
+use ashiato_core::analysis::{correlate_streamed, not_streamable_rules};
 use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
 use ashiato_core::rule::{Rule, SignalRule};
 use ashiato_core::scoring::{ScoringSettings, score};
+use ashiato_core::validate::validate_streaming;
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
     FileSource, ListScope, LocalSource, PartitionAssignment, WorkerSettings, list_local, run_worker,
@@ -48,12 +49,21 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
 
     let mut store = PipelineStore::open(&workspace.join(DATABASE_FILE))?;
     let manifest = store.start_run(plan.digest(), || list(&root, &plan))?;
+    for violation in validate_streaming(&selection.rules, plan.pipeline.batch) {
+        eprintln!("warning: {violation}; the rule is skipped");
+    }
+    let not_streamable = not_streamable_rules(&selection.rules, plan.pipeline.batch);
     let signal_rules: Vec<SignalRule> = selection
         .rules
         .iter()
         .filter_map(|rule| match rule {
             Rule::Signal(rule) => Some(rule.clone()),
             Rule::Scenario(_) => None,
+        })
+        .filter(|rule| {
+            not_streamable
+                .iter()
+                .all(|skipped| skipped.rule_id != rule.id)
         })
         .collect();
     let store = tokio::runtime::Builder::new_multi_thread()
@@ -62,11 +72,12 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         .block_on(stream(&plan, store, manifest, signal_rules))?;
 
     let counts = store.ingest_counts()?;
-    let mut analysis = correlate_available(
+    let mut analysis = correlate_streamed(
         &selection.rules,
         store.observed_signals()?,
         store.lineage_edges()?,
         store.data_availability()?,
+        not_streamable,
         &plan.context,
     );
     analysis.attach_refs(&selection.refs);

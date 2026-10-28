@@ -15,6 +15,7 @@ use crate::query::{
 use crate::rule::{DataRequirement, Rule, Rules, ScenarioRule, SignalRule};
 use crate::ruleset::RuleRefs;
 use crate::sequence::{ObservedSignal, ScenarioMatch, match_scenario};
+use crate::validate::{StreamingViolation, streaming_violations};
 use crate::{AnalysisWindow, Duration, Severity};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -264,9 +265,23 @@ fn correlate_with(
     analysis
 }
 
+// Rules that the batches of the pipeline cannot evaluate are left out before streaming and
+// reported like the rules without their data, together with the scenarios that refer to them
+// (streaming-pipeline.md 8.4, design.md 6.5).
 pub fn not_streamable_rules(rules: &Rules, batch: Duration) -> Vec<RuleSkippedRecord> {
-    let _ = (rules, batch);
-    todo!()
+    skipped_by(rules, |rule| {
+        streaming_violations(rule, batch)
+            .iter()
+            .map(StreamingViolation::check)
+            .collect()
+    })
+    .map(|(rule_id, violations)| RuleSkippedRecord {
+        rule_id,
+        reason: SkipReason::NotStreamable,
+        requires: Vec::new(),
+        violations,
+    })
+    .collect()
 }
 
 pub fn correlate_streamed(
@@ -277,34 +292,47 @@ pub fn correlate_streamed(
     not_streamable: Vec<RuleSkippedRecord>,
     context: &Context,
 ) -> Analysis {
-    let _ = (rules, observed, edges, data, not_streamable, context);
-    todo!()
+    let mut skipped = skipped_rules(rules, &data);
+    skipped.retain(|record| {
+        not_streamable
+            .iter()
+            .all(|excluded| excluded.rule_id != record.rule_id)
+    });
+    skipped.splice(0..0, not_streamable);
+    correlate_with(rules, observed, edges, data, skipped, context)
 }
 
 pub fn skipped_rules(rules: &Rules, data: &DataAvailability) -> Vec<RuleSkippedRecord> {
-    rules
-        .iter()
-        .filter_map(|rule| {
-            let missing = match rule {
-                Rule::Signal(rule) => missing_data(rule, data),
-                Rule::Scenario(scenario) => scenario
-                    .steps
-                    .iter()
-                    .filter_map(|step| match rules.get(&step.signal) {
-                        Some(Rule::Signal(signal)) => Some(missing_data(signal, data)),
-                        _ => None,
-                    })
-                    .flatten()
-                    .collect(),
-            };
-            (!missing.is_empty()).then(|| RuleSkippedRecord {
-                rule_id: rule.id().to_owned(),
-                reason: SkipReason::MissingData,
-                requires: missing.into_iter().collect(),
-                violations: Vec::new(),
-            })
+    skipped_by(rules, |rule| missing_data(rule, data))
+        .map(|(rule_id, requires)| RuleSkippedRecord {
+            rule_id,
+            reason: SkipReason::MissingData,
+            requires,
+            violations: Vec::new(),
         })
         .collect()
+}
+
+// A scenario is skipped for the union of the reasons of its signals.
+fn skipped_by<'r, T: Ord>(
+    rules: &'r Rules,
+    reasons: impl Fn(&SignalRule) -> BTreeSet<T> + 'r,
+) -> impl Iterator<Item = (String, Vec<T>)> + 'r {
+    rules.iter().filter_map(move |rule| {
+        let found: BTreeSet<T> = match rule {
+            Rule::Signal(rule) => reasons(rule),
+            Rule::Scenario(scenario) => scenario
+                .steps
+                .iter()
+                .filter_map(|step| match rules.get(&step.signal) {
+                    Some(Rule::Signal(signal)) => Some(reasons(signal)),
+                    _ => None,
+                })
+                .flatten()
+                .collect(),
+        };
+        (!found.is_empty()).then(|| (rule.id().to_owned(), found.into_iter().collect()))
+    })
 }
 
 fn from_internal_source(rules: &Rules, context: &Context, signal: &ObservedSignal) -> bool {

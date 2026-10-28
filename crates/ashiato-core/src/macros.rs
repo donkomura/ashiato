@@ -65,6 +65,32 @@ pub fn expand(sql: &str, context: &MacroContext<'_>) -> Result<String, MacroErro
     Ok(expanded)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum MacroKind {
+    // None when the length cannot be resolved; validate reports that as a macro error.
+    TimeBin(Option<Duration>),
+    BaselineWindow,
+    Other,
+}
+
+// Reads the length of time_bin the same way as expand, so that params give the same length to
+// the streaming checks as to the SQL (streaming-pipeline.md 8.4).
+pub(crate) fn classify(
+    expression: &str,
+    context: &MacroContext<'_>,
+) -> Result<MacroKind, MacroError> {
+    let call = Parser::parse(expression)?;
+    Ok(match call.name.as_str() {
+        "time_bin" => MacroKind::TimeBin(
+            args(&call)
+                .and_then(|[_, duration]: [&Arg; 2]| duration_arg(&call, duration, context))
+                .ok(),
+        ),
+        "in_baseline_window" => MacroKind::BaselineWindow,
+        _ => MacroKind::Other,
+    })
+}
+
 #[derive(Debug)]
 struct Call {
     name: String,

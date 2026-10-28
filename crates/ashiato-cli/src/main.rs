@@ -13,8 +13,8 @@ use ashiato_core::output::{JsonLinesSink, OriginScoreRecord, OutputRecord, RunRe
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules};
 use ashiato_core::ruleset::{RulesetError, Rulesets};
 use ashiato_core::scoring::{ScoringSettings, score};
-use ashiato_core::validate::validate;
-use ashiato_core::{AnalysisWindow, Severity};
+use ashiato_core::validate::{validate, validate_streaming};
+use ashiato_core::{AnalysisWindow, Duration, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use ashiato_testkit::fixture::{Fixture, FixtureFile, builtin_fixtures};
@@ -54,7 +54,7 @@ enum Command {
 
 #[derive(Subcommand)]
 enum RulesCommand {
-    Validate(RulesArgs),
+    Validate(ValidateArgs),
     Test(RulesArgs),
 }
 
@@ -78,6 +78,14 @@ struct RulesArgs {
     catalog: CatalogArgs,
     #[arg(long, value_delimiter = ',')]
     ruleset: Vec<String>,
+}
+
+#[derive(clap::Args)]
+struct ValidateArgs {
+    #[command(flatten)]
+    rules: RulesArgs,
+    #[arg(long, default_value = "1h")]
+    batch: Duration,
 }
 
 #[derive(clap::Args)]
@@ -295,8 +303,11 @@ fn write_output(
     Ok(())
 }
 
-fn validate_rules(args: &RulesArgs) -> anyhow::Result<()> {
-    let Catalog { rules, .. } = load_catalog(&args.catalog)?;
+fn validate_rules(args: &ValidateArgs) -> anyhow::Result<()> {
+    let Catalog { rules, .. } = load_catalog(&args.rules.catalog)?;
+    for violation in validate_streaming(&rules, args.batch) {
+        eprintln!("warning: {violation}");
+    }
     let errors = validate(&rules);
     for error in &errors {
         eprintln!("error: {error}");
