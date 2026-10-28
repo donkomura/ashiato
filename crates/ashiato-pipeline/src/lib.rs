@@ -17,7 +17,8 @@ pub use plan::{
 };
 pub use progress::{
     AckTiming, Admission, GlobalWatermark, PartitionProgress, PartitionWatermark, admit,
-    batch_start, file_watermark, global_watermark, is_batch_complete, is_late, recent_event_expiry,
+    batch_start, file_watermark, global_watermark, is_batch_complete, is_late, readable_partitions,
+    recent_event_expiry,
 };
 pub use schema::{EVENT_COLUMNS, events_schema};
 pub use transport::{Delivery, DeliveryHandle, PartitionReader, PartitionWriter, TransportError};

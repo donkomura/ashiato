@@ -4,7 +4,8 @@ use arrow_array::RecordBatch;
 use ashiato_pipeline::{
     AckTiming, Admission, GlobalWatermark, IngestedFile, PartitionId, PartitionMessage,
     PartitionProgress, PartitionWatermark, Position, admit, batch_start, events_schema,
-    file_watermark, global_watermark, is_batch_complete, is_late, recent_event_expiry,
+    file_watermark, global_watermark, is_batch_complete, is_late, readable_partitions,
+    recent_event_expiry,
 };
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 
@@ -312,6 +313,112 @@ fn the_global_watermark_is_the_minimum_over_the_partitions_that_have_not_ended()
         global_watermark([], read_since, lateness),
         GlobalWatermark::Complete
     );
+}
+
+#[test]
+fn partitions_ahead_of_the_global_watermark_by_max_skew_or_more_are_not_read() {
+    use PartitionWatermark::{At, Ended, NotStarted};
+    let lateness = TimeDelta::minutes(30);
+    let read_since = time(1, 0);
+    let skew = Some(TimeDelta::hours(2));
+    let cases = [
+        (
+            "without max_skew every partition that has not ended is read",
+            vec![At(time(1, 0)), At(time(20, 0)), NotStarted, Ended],
+            None,
+            vec![true, true, true, false],
+        ),
+        (
+            "the partition that holds the global watermark is read",
+            vec![At(time(3, 0)), At(time(4, 0))],
+            skew,
+            vec![true, true],
+        ),
+        (
+            "a partition just under max_skew ahead is read",
+            vec![At(time(3, 0)), At(time(4, 59))],
+            skew,
+            vec![true, true],
+        ),
+        (
+            "a partition exactly max_skew ahead is not read",
+            vec![At(time(3, 0)), At(time(5, 0))],
+            skew,
+            vec![true, false],
+        ),
+        (
+            "a partition more than max_skew ahead is not read",
+            vec![At(time(3, 0)), At(time(9, 0))],
+            skew,
+            vec![true, false],
+        ),
+        (
+            "a partition that has received nothing holds the global watermark and is read",
+            vec![NotStarted, At(time(2, 29)), At(time(2, 30))],
+            skew,
+            vec![true, true, false],
+        ),
+        (
+            "an ended partition is not read and does not hold the others back",
+            vec![Ended, At(time(9, 0)), At(time(10, 0))],
+            skew,
+            vec![false, true, true],
+        ),
+        (
+            "nothing is read once every partition has ended",
+            vec![Ended, Ended],
+            skew,
+            vec![false, false],
+        ),
+        ("no partitions", vec![], skew, vec![]),
+    ];
+    for (name, partitions, max_skew, expected) in cases {
+        assert_eq!(
+            readable_partitions(&partitions, read_since, lateness, max_skew),
+            expected,
+            "{name}"
+        );
+    }
+}
+
+// The analyzer waits only on the partitions it may read, so a set of partitions that has not
+// ended must always leave one of them readable; otherwise the run stops for good (9 節).
+#[test]
+fn some_partition_is_readable_while_any_partition_has_not_ended() {
+    let lateness = TimeDelta::minutes(30);
+    let read_since = time(1, 0);
+    let states: Vec<PartitionWatermark> =
+        [PartitionWatermark::NotStarted, PartitionWatermark::Ended]
+            .into_iter()
+            .chain(
+                (0..8).map(|step| {
+                    PartitionWatermark::At(time(0, 30) + TimeDelta::minutes(25 * step))
+                }),
+            )
+            .collect();
+    for max_skew in [
+        TimeDelta::minutes(1),
+        TimeDelta::minutes(50),
+        TimeDelta::hours(3),
+    ] {
+        for first in &states {
+            for second in &states {
+                for third in &states {
+                    let partitions = [*first, *second, *third];
+                    let readable =
+                        readable_partitions(&partitions, read_since, lateness, Some(max_skew));
+                    let open = partitions
+                        .iter()
+                        .any(|partition| *partition != PartitionWatermark::Ended);
+                    assert_eq!(
+                        readable.iter().any(|readable| *readable),
+                        open,
+                        "{partitions:?} with max_skew {max_skew}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

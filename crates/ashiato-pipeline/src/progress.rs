@@ -168,6 +168,16 @@ pub fn global_watermark(
         .map_or(GlobalWatermark::Complete, GlobalWatermark::At)
 }
 
+pub fn readable_partitions(
+    partitions: &[PartitionWatermark],
+    read_since: EventTime,
+    allowed_lateness: TimeDelta,
+    max_skew: Option<TimeDelta>,
+) -> Vec<bool> {
+    let _ = (partitions, read_since, allowed_lateness, max_skew);
+    todo!()
+}
+
 pub fn batch_start(event_time: EventTime, batch: TimeDelta) -> EventTime {
     let width = batch
         .num_microseconds()
