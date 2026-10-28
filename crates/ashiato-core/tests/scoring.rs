@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use ashiato_core::analysis::correlate;
+use ashiato_core::context::Context;
 use ashiato_core::lineage::{Origin, OriginKind};
 use ashiato_core::output::{OriginScoreRecord, SignalEvidence, SignalRecord};
 use ashiato_core::rule::{RuleFile, RuleSource, Rules};
@@ -296,6 +297,7 @@ fn origins_with_a_scenario_match_are_scored_from_their_signals_alone() {
             observed("login", "10:20", BOB_ARN),
         ],
         Vec::new(),
+        &Context::default(),
     );
     assert_eq!(analysis.matches.len(), 1, "{:#?}", analysis.matches);
 

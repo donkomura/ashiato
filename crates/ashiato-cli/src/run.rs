@@ -4,6 +4,7 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use ashiato_core::Severity;
 use ashiato_core::analysis::correlate_available;
+use ashiato_core::context::Context as ContextFile;
 use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
 use ashiato_core::rule::{Rule, SignalRule};
 use ashiato_core::scoring::{ScoringSettings, score};
@@ -66,6 +67,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         store.observed_signals()?,
         store.lineage_edges()?,
         store.data_availability()?,
+        &ContextFile::default(),
     );
     analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {

@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use ashiato_core::analysis::{AnalysisError, analyze, correlate};
+use ashiato_core::context::Context;
 use ashiato_core::lineage::{Caller, LineageEdge, LineageStep, LineageWarning, Origin, OriginKind};
 use ashiato_core::macros::Dialect;
 use ashiato_core::output::{RuleSkippedRecord, SignalEvidence, SkipReason, StepRecord};
@@ -233,7 +234,7 @@ async fn signals_of_a_role_chain_are_matched_under_their_origin() {
         .with_signals("SELECT 'escalate'", vec![escalate.clone()])
         .with_edge(alice_edge());
 
-    let analysis = analyze(&backend, &scenario_rules(), &window())
+    let analysis = analyze(&backend, &scenario_rules(), &window(), &Context::default())
         .await
         .unwrap();
 
@@ -280,7 +281,7 @@ async fn signals_of_different_origins_are_not_matched_together() {
             vec![row("10:10", "AKIABOB", BOB_ARN, "evt-escalate")],
         );
 
-    let analysis = analyze(&backend, &scenario_rules(), &window())
+    let analysis = analyze(&backend, &scenario_rules(), &window(), &Context::default())
         .await
         .unwrap();
 
@@ -303,7 +304,7 @@ async fn signal_records_carry_the_rule_and_the_origin_in_origin_and_time_order()
         )
         .with_edge(alice_edge());
 
-    let analysis = analyze(&backend, &scenario_rules(), &window())
+    let analysis = analyze(&backend, &scenario_rules(), &window(), &Context::default())
         .await
         .unwrap();
 
@@ -341,7 +342,9 @@ async fn a_failing_signal_rule_is_reported_with_its_id() {
     let rules = rules(&[("login", LOGIN_RULE), ("broken", BROKEN_RULE)]);
     let backend = FakeBackend::default().with_signals("SELECT 'login'", Vec::new());
 
-    let error = analyze(&backend, &rules, &window()).await.unwrap_err();
+    let error = analyze(&backend, &rules, &window(), &Context::default())
+        .await
+        .unwrap_err();
 
     match error {
         AnalysisError::Signal(error) => assert_eq!(error.rule_id(), "broken"),
@@ -358,7 +361,7 @@ async fn a_failing_lineage_query_is_an_error() {
     .with_signals("SELECT 'login'", Vec::new())
     .with_signals("SELECT 'escalate'", Vec::new());
 
-    let error = analyze(&backend, &scenario_rules(), &window())
+    let error = analyze(&backend, &scenario_rules(), &window(), &Context::default())
         .await
         .unwrap_err();
 
@@ -398,7 +401,9 @@ async fn rules_requiring_missing_data_and_their_scenarios_are_skipped() {
         vec![row("10:00", ALICE_KEY, ALICE_ARN, "evt-login")],
     );
 
-    let mut analysis = analyze(&backend, &s3_rules(), &window()).await.unwrap();
+    let mut analysis = analyze(&backend, &s3_rules(), &window(), &Context::default())
+        .await
+        .unwrap();
 
     analysis.skipped.sort_by(|a, b| a.rule_id.cmp(&b.rule_id));
     assert_eq!(
@@ -433,7 +438,9 @@ async fn rules_requiring_available_data_are_run() {
         vec![row("10:10", ALICE_KEY, ALICE_ARN, "evt-read")],
     );
 
-    let analysis = analyze(&backend, &s3_rules(), &window()).await.unwrap();
+    let analysis = analyze(&backend, &s3_rules(), &window(), &Context::default())
+        .await
+        .unwrap();
 
     assert!(analysis.skipped.is_empty(), "{:#?}", analysis.skipped);
     assert_eq!(analysis.data, data);
@@ -454,7 +461,7 @@ async fn the_analysis_reports_the_data_availability_of_the_backend() {
     .with_signals("SELECT 'login'", Vec::new())
     .with_signals("SELECT 'escalate'", Vec::new());
 
-    let analysis = analyze(&backend, &scenario_rules(), &window())
+    let analysis = analyze(&backend, &scenario_rules(), &window(), &Context::default())
         .await
         .unwrap();
 
@@ -471,7 +478,7 @@ async fn a_failing_data_availability_query_is_an_error() {
     .with_signals("SELECT 'login'", Vec::new())
     .with_signals("SELECT 'escalate'", Vec::new());
 
-    let error = analyze(&backend, &scenario_rules(), &window())
+    let error = analyze(&backend, &scenario_rules(), &window(), &Context::default())
         .await
         .unwrap_err();
 
@@ -529,6 +536,7 @@ fn correlate_groups_signals_of_issued_sessions_under_their_origin_and_matches_th
                 "evt-assume-audit",
             ),
         ],
+        &Context::default(),
     );
 
     assert_eq!(analysis.matches.len(), 1, "{:#?}", analysis.matches);
@@ -584,6 +592,7 @@ fn correlate_without_the_edge_keeps_the_signals_of_the_session_apart() {
             ),
         ],
         Vec::new(),
+        &Context::default(),
     );
 
     assert!(analysis.matches.is_empty(), "{:#?}", analysis.matches);
@@ -615,6 +624,7 @@ fn correlate_uses_one_of_the_duplicated_edges_of_a_session() {
             ),
         ],
         vec![alice_edge(), alice_edge()],
+        &Context::default(),
     );
 
     assert_eq!(analysis.matches.len(), 1, "{:#?}", analysis.matches);
@@ -633,6 +643,7 @@ fn correlate_reports_each_lineage_cycle_once() {
             session_edge(CHILD_KEY, GRANDCHILD_KEY, ADMIN_ROLE_ARN, "evt-assume-1"),
             session_edge(GRANDCHILD_KEY, CHILD_KEY, AUDIT_ROLE_ARN, "evt-assume-2"),
         ],
+        &Context::default(),
     );
 
     assert_eq!(
@@ -668,11 +679,17 @@ fn correlate_does_not_depend_on_the_order_of_signals_and_edges_with_distinct_tim
         ),
     ];
 
-    let forward = correlate(&scenario_rules(), signals.clone(), edges.clone());
+    let forward = correlate(
+        &scenario_rules(),
+        signals.clone(),
+        edges.clone(),
+        &Context::default(),
+    );
     let backward = correlate(
         &scenario_rules(),
         signals.into_iter().rev().collect(),
         edges.into_iter().rev().collect(),
+        &Context::default(),
     );
 
     assert_eq!(forward, backward);
@@ -682,7 +699,12 @@ fn correlate_does_not_depend_on_the_order_of_signals_and_edges_with_distinct_tim
 
 #[test]
 fn correlate_without_signals_returns_an_empty_analysis() {
-    let analysis = correlate(&scenario_rules(), Vec::new(), vec![alice_edge()]);
+    let analysis = correlate(
+        &scenario_rules(),
+        Vec::new(),
+        vec![alice_edge()],
+        &Context::default(),
+    );
 
     assert!(analysis.signals.is_empty());
     assert!(analysis.matches.is_empty());

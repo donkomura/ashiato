@@ -1,6 +1,7 @@
 mod common;
 
 use ashiato_core::analysis::correlate;
+use ashiato_core::context::Context;
 use ashiato_core::fixture::fixture_window;
 use ashiato_core::rule::{Rule, RuleSource, Rules, SignalRule};
 use ashiato_duckdb::{Analyzer, AnalyzerSettings, PipelineStore};
@@ -53,13 +54,16 @@ async fn streamed_detections(rules: &Rules, fixture: &Fixture) -> usize {
             .iter()
             .filter(|signal| signal.signal_id == rule.id)
             .count(),
-        Some(Rule::Scenario(scenario)) => {
-            correlate(rules, observed, store.lineage_edges().unwrap())
-                .matches
-                .iter()
-                .filter(|found| found.scenario_id == scenario.id)
-                .count()
-        }
+        Some(Rule::Scenario(scenario)) => correlate(
+            rules,
+            observed,
+            store.lineage_edges().unwrap(),
+            &Context::default(),
+        )
+        .matches
+        .iter()
+        .filter(|found| found.scenario_id == scenario.id)
+        .count(),
         None => panic!("fixture {} refers to an unknown rule", fixture.path),
     }
 }

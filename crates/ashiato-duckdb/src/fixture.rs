@@ -2,6 +2,7 @@ use std::fmt;
 
 use ashiato_core::AnalysisWindow;
 use ashiato_core::analysis::{AnalysisError, analyze, skipped_rules};
+use ashiato_core::context::Context;
 use ashiato_core::fixture::fixture_window;
 use ashiato_core::query::QueryBackend;
 use ashiato_core::query::query_signal_rule;
@@ -134,14 +135,16 @@ pub async fn run_fixture(
     let window = fixture_window();
     let detections = match rule {
         Rule::Signal(rule) => signal_detections(&backend, rules, rule, &window).await,
-        Rule::Scenario(scenario) => analyze(&backend, rules, &window).await.map(|analysis| {
-            let matches = analysis
-                .matches
-                .iter()
-                .filter(|found| found.scenario_id == scenario.id)
-                .count();
-            Detections::ScenarioMatches(matches)
-        }),
+        Rule::Scenario(scenario) => analyze(&backend, rules, &window, &Context::default())
+            .await
+            .map(|analysis| {
+                let matches = analysis
+                    .matches
+                    .iter()
+                    .filter(|found| found.scenario_id == scenario.id)
+                    .count();
+                Detections::ScenarioMatches(matches)
+            }),
     }
     .map_err(|source| FixtureRunError::Query {
         rule_id: fixture.rule_id.clone(),

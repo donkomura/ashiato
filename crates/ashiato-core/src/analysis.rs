@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{DateTime, Utc};
 
+use crate::context::Context;
 use crate::lineage::{LineageEdge, LineageGraph, LineageStep, LineageWarning, Origin};
 use crate::output::{
     RecordKind, RuleSkippedRecord, ScenarioMatchRecord, SignalEvidence, SignalRecord, SkipReason,
@@ -144,6 +145,7 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
     backend: &B,
     rules: &Rules,
     window: &AnalysisWindow,
+    context: &Context,
 ) -> Result<Analysis, AnalysisError> {
     let data = backend
         .data_availability(window)
@@ -165,13 +167,14 @@ pub async fn analyze<B: QueryBackend + ?Sized>(
         .query_lineage(window)
         .await
         .map_err(AnalysisError::Lineage)?;
-    Ok(correlate_available(rules, observed, edges, data))
+    Ok(correlate_available(rules, observed, edges, data, context))
 }
 
 pub fn correlate(
     rules: &Rules,
     observed: Vec<ObservedSignal>,
     edges: Vec<LineageEdge>,
+    _context: &Context,
 ) -> Analysis {
     correlate_with(
         rules,
@@ -189,6 +192,7 @@ pub fn correlate_available(
     observed: Vec<ObservedSignal>,
     edges: Vec<LineageEdge>,
     data: DataAvailability,
+    _context: &Context,
 ) -> Analysis {
     let skipped = skipped_rules(rules, &data);
     correlate_with(rules, observed, edges, data, skipped)

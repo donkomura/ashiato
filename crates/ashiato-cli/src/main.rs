@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, bail};
 use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
 use ashiato_core::analysis::Analysis;
+use ashiato_core::context::Context as ContextFile;
 use ashiato_core::lineage::LineageWarning;
 use ashiato_core::output::{JsonLinesSink, OriginScoreRecord, OutputRecord, RunRecord, Sink};
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules};
@@ -228,6 +229,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
             &backend,
             &selection.rules,
             &window,
+            &ContextFile::default(),
         ))?;
     analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {

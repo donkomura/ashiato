@@ -2,6 +2,7 @@ use std::fs::File;
 use std::io::Write;
 
 use ashiato_core::analysis::{Analysis, analyze};
+use ashiato_core::context::Context;
 use ashiato_core::fixture::fixture_window;
 use ashiato_core::lineage::{Origin, OriginKind};
 use ashiato_core::rule::{RuleSource, Rules};
@@ -39,7 +40,9 @@ async fn analyze_builtin_fixture(path: &str) -> Analysis {
 
     let backend = DuckDbBackend::open(&database).unwrap();
     let rules = Rules::new([RuleSource::builtin().unwrap()]).unwrap();
-    analyze(&backend, &rules, &fixture_window()).await.unwrap()
+    analyze(&backend, &rules, &fixture_window(), &Context::default())
+        .await
+        .unwrap()
 }
 
 fn step_signal_counts(analysis: &Analysis, scenario_id: &str) -> Vec<Vec<(String, usize)>> {
