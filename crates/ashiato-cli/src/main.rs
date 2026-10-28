@@ -18,7 +18,7 @@ use ashiato_core::{AnalysisWindow, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use ashiato_testkit::fixture::{Fixture, FixtureFile, builtin_fixtures};
-use chrono::{DateTime, NaiveDate, NaiveTime, TimeDelta, Utc};
+use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use clap::{Parser, Subcommand};
 
 mod run;
@@ -28,7 +28,6 @@ const EVIDENCE_DIR: &str = "evidence";
 const S3_SCHEME: &str = "s3://";
 const RULE_EXTENSION: &str = "yaml";
 const FIXTURE_EXTENSION: &str = "json";
-const BASELINE_LOOKBACK_DAYS: i64 = 30;
 const DEFAULT_INGEST_JOBS: NonZeroUsize = NonZeroUsize::new(4).unwrap();
 
 #[derive(Parser)]
@@ -120,6 +119,8 @@ struct AnalyzeArgs {
     ruleset: Vec<String>,
     #[arg(long, value_delimiter = ',')]
     rule: Vec<String>,
+    #[arg(long)]
+    context: Option<PathBuf>,
     #[arg(long)]
     emit_signals: bool,
     #[arg(long, value_delimiter = ',')]
@@ -213,15 +214,18 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
             database.display()
         );
     }
+    let context = match &args.context {
+        Some(path) => load_context(path)?,
+        None => ContextFile::default(),
+    };
     let window = AnalysisWindow::new(
         args.since,
         args.until,
-        TimeDelta::days(BASELINE_LOOKBACK_DAYS),
+        context.baseline.lookback.to_time_delta(),
     )?;
     let catalog = load_catalog(&args.catalog)?;
-    let selection = catalog
-        .rulesets
-        .select(&catalog.rules, &args.ruleset, &args.rule)?;
+    let rules = context.apply_params(&catalog.rules)?;
+    let selection = catalog.rulesets.select(&rules, &args.ruleset, &args.rule)?;
     let backend = DuckDbBackend::open(&database)?;
     let mut analysis = tokio::runtime::Builder::new_current_thread()
         .build()?
@@ -229,7 +233,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
             &backend,
             &selection.rules,
             &window,
-            &ContextFile::default(),
+            &context,
         ))?;
     analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {
@@ -246,10 +250,16 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         until: window.until(),
         rule_sources: selection.rules.rule_sources().to_vec(),
         rulesets: selection.rulesets,
-        context_digest: None,
+        context_digest: context.digest().map(str::to_owned),
         data: analysis.data,
     });
     write_output(&run, analysis, scores, args.emit_signals, args.summary)
+}
+
+fn load_context(path: &Path) -> anyhow::Result<ContextFile> {
+    let text = fs::read_to_string(path)
+        .with_context(|| format!("failed to read context file {}", path.display()))?;
+    ContextFile::parse(&text).with_context(|| format!("invalid context file {}", path.display()))
 }
 
 fn write_output(

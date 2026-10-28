@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyhow::{Context, bail};
 use ashiato_core::Severity;
 use ashiato_core::analysis::correlate_available;
-use ashiato_core::context::Context as ContextFile;
 use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
 use ashiato_core::rule::{Rule, SignalRule};
 use ashiato_core::scoring::{ScoringSettings, score};
@@ -38,9 +37,10 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
     let root = local_root(&plan)?;
     let rule_dirs = rule_dirs(&plan)?;
     let catalog = load_catalog_from(&rule_dirs, &plan.ruleset_dirs)?;
+    let rules = plan.context.apply_params(&catalog.rules)?;
     let selection = catalog
         .rulesets
-        .select(&catalog.rules, &plan.rulesets, &plan.rule)?;
+        .select(&rules, &plan.rulesets, &plan.rule)?;
     let workspace = args
         .plan
         .parent()
@@ -67,7 +67,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         store.observed_signals()?,
         store.lineage_edges()?,
         store.data_availability()?,
-        &ContextFile::default(),
+        &plan.context,
     );
     analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {
@@ -85,7 +85,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
             until: window.until(),
             rule_sources: selection.rules.rule_sources().to_vec(),
             rulesets: selection.rulesets,
-            context_digest: None,
+            context_digest: plan.context.digest().map(str::to_owned),
             data: analysis.data,
         },
         plan_digest: plan.digest().to_owned(),
