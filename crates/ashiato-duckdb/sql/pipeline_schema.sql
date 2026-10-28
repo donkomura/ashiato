@@ -166,3 +166,12 @@ CREATE TABLE IF NOT EXISTS baseline (
 CREATE TABLE IF NOT EXISTS baseline_principals (
     principal_key VARCHAR
 );
+
+-- Counts for the requires of the rules, taken from the analysis period of each finalized batch.
+-- Whether a kind of data exists is known only after every batch (streaming-pipeline.md 8.7).
+CREATE TABLE IF NOT EXISTS data_counters (
+    events UBIGINT NOT NULL,
+    s3_data_events UBIGINT NOT NULL
+);
+
+INSERT INTO data_counters SELECT 0, 0 WHERE NOT EXISTS (SELECT 1 FROM data_counters);

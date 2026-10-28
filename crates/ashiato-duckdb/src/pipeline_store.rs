@@ -182,7 +182,16 @@ impl PipelineStore {
     }
 
     pub fn data_availability(&self) -> Result<DataAvailability, StoreError> {
-        todo!()
+        Ok(self.connection.query_row(
+            "SELECT events, s3_data_events > 0 FROM data_counters",
+            [],
+            |row| {
+                Ok(DataAvailability {
+                    events: row.get(0)?,
+                    s3_data_events: row.get(1)?,
+                })
+            },
+        )?)
     }
 
     pub fn ingest_counts(&self) -> Result<IngestCounts, StoreError> {

@@ -24,6 +24,14 @@ const INSERT_BASELINE_SQL: &str = "INSERT INTO baseline \
      UNION SELECT principal_key, 'region', aws_region FROM period \
      UNION SELECT principal_key, 'event_name', event_name FROM period \
      EXCEPT SELECT principal_key, dim, value FROM baseline";
+// The same conditions as data_availability.sql of the batch processing.
+const UPDATE_DATA_COUNTERS_SQL: &str = "UPDATE data_counters SET \
+     events = data_counters.events + counted.events, \
+     s3_data_events = data_counters.s3_data_events + counted.s3_data_events \
+     FROM (SELECT count(*) AS events, \
+                  count(*) FILTER (WHERE event_source = 's3.amazonaws.com' \
+                                     AND event_category = 'Data') AS s3_data_events \
+           FROM events WHERE event_time >= $1 AND event_time < $2) AS counted";
 const INSERT_BASELINE_PRINCIPALS_SQL: &str = "INSERT INTO baseline_principals \
      SELECT principal_key FROM events WHERE event_time >= $1 AND event_time < $2 \
      EXCEPT SELECT principal_key FROM baseline_principals";
@@ -68,6 +76,11 @@ impl BatchQueries {
             connection.execute(INSERT_BASELINE_PRINCIPALS_SQL, range)?;
         }
         if start < self.window.until() && self.window.since() < end {
+            let range = [
+                timestamp(start.max(self.window.since())),
+                timestamp(end.min(self.window.until())),
+            ];
+            connection.execute(UPDATE_DATA_COUNTERS_SQL, range)?;
             self.query_signals(connection, start, end)?;
         }
         // Lineage is taken from the baseline period as well, so that a session issued before

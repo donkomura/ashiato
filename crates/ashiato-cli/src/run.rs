@@ -3,9 +3,8 @@ use std::sync::Arc;
 
 use anyhow::{Context, bail};
 use ashiato_core::Severity;
-use ashiato_core::analysis::correlate;
+use ashiato_core::analysis::correlate_available;
 use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
-use ashiato_core::query::DataAvailability;
 use ashiato_core::rule::{Rule, SignalRule};
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
@@ -61,10 +60,11 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         .block_on(stream(&plan, store, manifest, signal_rules))?;
 
     let counts = store.ingest_counts()?;
-    let mut analysis = correlate(
+    let mut analysis = correlate_available(
         &selection.rules,
         store.observed_signals()?,
         store.lineage_edges()?,
+        store.data_availability()?,
     );
     analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {
@@ -81,7 +81,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
             until: window.until(),
             rule_sources: selection.rules.rule_sources().to_vec(),
             rulesets: selection.rulesets,
-            data: DataAvailability::default(),
+            data: analysis.data,
         },
         plan_digest: plan.digest().to_owned(),
         ingested_files: counts.ingested_files,
