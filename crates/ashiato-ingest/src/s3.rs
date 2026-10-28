@@ -33,6 +33,8 @@ const LEGACY_EU_LOCATION: &str = "EU";
 const LEGACY_EU_REGION: &str = "eu-west-1";
 // S3 reports the version of an object written while versioning was never enabled as "null".
 const NULL_VERSION: &str = "null";
+const NOT_FOUND: u16 = 404;
+const PRECONDITION_FAILED: u16 = 412;
 const TOO_MANY_REQUESTS: u16 = 429;
 const RETRYABLE_CODES: [&str; 4] = [
     "SlowDown",
@@ -328,6 +330,46 @@ impl S3Source {
         }
     }
 
+    async fn get(&self, entry: &ManifestEntry) -> Result<Vec<u8>, S3Error> {
+        let uri = &entry.uri;
+        let location = S3Location::parse(uri)?;
+        let changed = |actual: Option<&str>| {
+            Failure::Final(S3Error::EtagMismatch {
+                uri: uri.clone(),
+                expected: entry.etag.clone().unwrap_or_default(),
+                actual: actual.map(str::to_owned),
+            })
+        };
+        self.retrying(uri, || async {
+            // If-Match makes S3 refuse a changed object before sending its body. The ETag of the
+            // response is still compared, in case a storage ignores the header.
+            let output = self
+                .client
+                .get_object()
+                .bucket(&location.bucket)
+                .key(&location.prefix)
+                .set_version_id(entry.version_id.clone())
+                .set_if_match(entry.etag.clone())
+                .send()
+                .await
+                .map_err(|error| match status(&error) {
+                    Some(NOT_FOUND) => Failure::Final(S3Error::Missing { uri: uri.clone() }),
+                    Some(PRECONDITION_FAILED) => changed(None),
+                    _ => request_failure("GetObject", uri, &error),
+                })?;
+            if entry.etag.is_some() && output.e_tag() != entry.etag.as_deref() {
+                return Err(changed(output.e_tag()));
+            }
+            let body = output
+                .body
+                .collect()
+                .await
+                .map_err(|error| Failure::Retryable(error.into()))?;
+            Ok(body.into_bytes().to_vec())
+        })
+        .await
+    }
+
     async fn retrying<T, F, Fut>(&self, target: &str, mut attempt: F) -> Result<T, S3Error>
     where
         F: FnMut() -> Fut,
@@ -356,8 +398,8 @@ impl S3Source {
 
 #[async_trait]
 impl FileSource for S3Source {
-    async fn read(&self, _entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
-        todo!()
+    async fn read(&self, entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
+        Ok(self.get(entry).await?)
     }
 }
 
@@ -389,6 +431,13 @@ fn subdirectories<'a>(parent: &'a str, prefixes: &'a [String]) -> impl Iterator<
             .strip_suffix('/')
             .filter(|name| !name.is_empty() && !name.contains('/'))
     })
+}
+
+fn status<E>(error: &SdkError<E, HttpResponse>) -> Option<u16> {
+    match error {
+        SdkError::ServiceError(service) => Some(service.raw().status().as_u16()),
+        _ => None,
+    }
 }
 
 // S3 asks clients to retry 503 SlowDown and other server errors with growing intervals.
