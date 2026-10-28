@@ -12,6 +12,7 @@ workspace = true
 arrow-array = "60.0.0"
 arrow-ipc = "60.0.0"
 arrow-schema = "60.0.0"
+ashiato-core = { version = "0.1.0", path = "../ashiato-core" }
 ashiato-pipeline = { version = "0.1.0", path = "../ashiato-pipeline" }
 async-nats = { version = "=0.51.0", default-features = false, features = ["jetstream", "ring", "server_2_10"] }
 async-trait = "0.1.92"
@@ -24,7 +25,6 @@ thiserror = "2.0.21"
 tokio = { version = "1.54.1", features = ["sync", "time"] }
 
 [dev-dependencies]
-ashiato-core = { version = "0.1.0", path = "../ashiato-core" }
 ashiato-duckdb = { version = "0.1.0", path = "../ashiato-duckdb" }
 ashiato-ingest = { version = "0.1.0", path = "../ashiato-ingest" }
 ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
