@@ -309,6 +309,54 @@ fn run_writes_the_summary_and_the_listed_severities() {
     assert!(of_type(&high, "scenario_match").is_empty(), "{high:#?}");
 }
 
+fn alice_origin_score() -> Value {
+    json!({
+        "type": "origin_score",
+        "origin": { "id": "iam_user:arn:aws:iam::111111111111:user/alice", "kind": "iam_user" },
+        "score": 1,
+        "tactics": ["TA0001"],
+        "signal_ids": ["test_console_login"],
+        "above_threshold": false,
+    })
+}
+
+#[test]
+fn run_writes_the_origin_scores_after_the_scenario_matches() {
+    let case = RunCase::new();
+
+    let lines = case.run(&[]);
+
+    assert_eq!(
+        of_type(&lines, "origin_score"),
+        [&alice_origin_score()],
+        "{lines:#?}"
+    );
+    let last_match = lines
+        .iter()
+        .rposition(|line| line["type"] == "scenario_match")
+        .unwrap();
+    let first_score = lines
+        .iter()
+        .position(|line| line["type"] == "origin_score")
+        .unwrap();
+    assert!(last_match < first_score, "{lines:#?}");
+}
+
+#[test]
+fn run_scores_the_origins_before_filtering_by_severity_and_not_in_the_summary() {
+    let case = RunCase::new();
+
+    let high = case.run(&["--severity", "high"]);
+    let summary = case.run(&["--summary"]);
+
+    assert_eq!(
+        of_type(&high, "origin_score"),
+        [&alice_origin_score()],
+        "{high:#?}"
+    );
+    assert!(of_type(&summary, "origin_score").is_empty(), "{summary:#?}");
+}
+
 #[test]
 fn running_again_reads_the_saved_manifest_and_gives_the_same_output() {
     let case = RunCase::new();

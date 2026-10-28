@@ -475,7 +475,7 @@ fn analyze_writes_only_the_listed_severities() {
     for line in low
         .iter()
         .skip(1)
-        .filter(|line| line["type"] != "rule_skipped")
+        .filter(|line| !["rule_skipped", "origin_score"].contains(&line["type"].as_str().unwrap()))
     {
         assert_eq!(line["severity"], "low", "{line}");
     }
@@ -491,13 +491,75 @@ fn analyze_writes_only_the_listed_severities() {
     for line in medium_and_high
         .iter()
         .skip(1)
-        .filter(|line| line["type"] != "rule_skipped")
+        .filter(|line| !["rule_skipped", "origin_score"].contains(&line["type"].as_str().unwrap()))
     {
         assert!(
             ["medium", "high"].contains(&line["severity"].as_str().unwrap()),
             "{line}"
         );
     }
+}
+
+fn alice_origin_score() -> serde_json::Value {
+    json!({
+        "type": "origin_score",
+        "origin": { "id": "iam_user:arn:aws:iam::111111111111:user/alice", "kind": "iam_user" },
+        "score": 1,
+        "tactics": ["TA0001"],
+        "signal_ids": ["test_console_login"],
+        "above_threshold": false,
+    })
+}
+
+#[test]
+fn analyze_writes_the_origin_scores_after_the_scenario_matches() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--rule", "test_repeated_console_login"]);
+
+    assert_eq!(
+        of_type(&lines, "origin_score"),
+        [&alice_origin_score()],
+        "{lines:#?}"
+    );
+    let last_match = lines
+        .iter()
+        .rposition(|line| line["type"] == "scenario_match")
+        .unwrap();
+    let first_score = lines
+        .iter()
+        .position(|line| line["type"] == "origin_score")
+        .unwrap();
+    assert!(last_match < first_score, "{lines:#?}");
+}
+
+#[test]
+fn analyze_scores_the_origins_before_filtering_by_severity() {
+    let case = AnalyzeCase::new();
+
+    for severity in ["medium", "high"] {
+        let lines = case.analyze(&[
+            "--rule",
+            "test_repeated_console_login",
+            "--severity",
+            severity,
+        ]);
+
+        assert_eq!(
+            of_type(&lines, "origin_score"),
+            [&alice_origin_score()],
+            "{severity}: {lines:#?}"
+        );
+    }
+}
+
+#[test]
+fn analyze_summary_does_not_write_the_origin_scores() {
+    let case = AnalyzeCase::new();
+
+    let lines = case.analyze(&["--rule", "test_repeated_console_login", "--summary"]);
+
+    assert!(of_type(&lines, "origin_score").is_empty(), "{lines:#?}");
 }
 
 #[test]
