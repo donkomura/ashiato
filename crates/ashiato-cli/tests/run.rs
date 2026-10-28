@@ -364,6 +364,29 @@ fn run_scores_the_origins_before_filtering_by_severity_and_not_in_the_summary() 
 }
 
 #[test]
+fn run_writes_the_largest_number_of_pending_rows_to_stderr_as_one_json_line() {
+    let case = RunCase::new();
+
+    let output = case.run_output(&[]);
+
+    assert!(output.status.success(), "{output:?}");
+    let metrics: Vec<Value> = String::from_utf8_lossy(&output.stderr)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|line| line.get("metrics").is_some())
+        .collect();
+    assert_eq!(metrics.len(), 1, "{metrics:?}");
+    assert_eq!(metrics[0]["metrics"], "run");
+    // The few messages of the case are committed at once, so both logins are pending together.
+    assert_eq!(metrics[0]["pending_max_rows"], 2, "{}", metrics[0]);
+    assert!(
+        lines(&output.stdout)
+            .iter()
+            .all(|line| line.get("metrics").is_none())
+    );
+}
+
+#[test]
 fn running_again_reads_the_saved_manifest_and_gives_the_same_output() {
     let case = RunCase::new();
     let first = case.run_output(&["--emit-signals"]);

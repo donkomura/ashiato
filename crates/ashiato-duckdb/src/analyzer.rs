@@ -25,6 +25,11 @@ pub struct AnalyzerSettings {
     pub commit_every: usize,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct AnalyzerMetrics {
+    pub pending_max_rows: u64,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AnalyzerError {
     #[error(transparent)]
@@ -178,6 +183,10 @@ impl Analyzer {
 
     pub fn into_store(self) -> PipelineStore {
         self.store
+    }
+
+    pub fn metrics(&self) -> AnalyzerMetrics {
+        todo!()
     }
 
     pub fn resume_positions(&self) -> Vec<Position> {

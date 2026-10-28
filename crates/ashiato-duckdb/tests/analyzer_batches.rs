@@ -262,3 +262,30 @@ async fn stopping_and_resuming_gives_the_same_batches_and_late_events() {
         }
     }
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_largest_number_of_pending_rows_is_kept_after_batches_are_finalized() {
+    let workspace = Workspace::new();
+    hourly_files(&workspace, "111111111111");
+    hourly_files(&workspace, "222222222222");
+    let manifest = workspace.manifest();
+    let database = workspace.database("run");
+    let mut analyzer = open(&database, &manifest, settings());
+    let (mut reader, worker) = start_worker(&manifest, &analyzer.resume_positions());
+
+    let mut peaks = Vec::new();
+    while !analyzer.all_partitions_ended() {
+        analyzer.receive(&mut reader).await.unwrap();
+        let handles = analyzer.commit().unwrap();
+        reader.ack(&handles).await.unwrap();
+        analyzer.finalize_batches().unwrap();
+        peaks.push(analyzer.metrics().pending_max_rows);
+    }
+    drop(analyzer);
+    worker.await.unwrap().unwrap();
+
+    // Both partitions must pass the end of a batch before it is finalized, so the pending rows
+    // grow to the events of two hours of both partitions before the first batch leaves.
+    assert_eq!(peaks, [1, 2, 3, 4, 4, 4, 4, 4]);
+    assert!(pending(&database).is_empty());
+}
