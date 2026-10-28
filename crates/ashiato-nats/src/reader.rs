@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use ashiato_pipeline::{
     BrokerSettings, Delivery, DeliveryHandle, PartitionId, PartitionReader, TransportError,
@@ -97,6 +97,33 @@ impl NatsReader {
         Ok(())
     }
 
+    // The deadline is checked only between the polls, so that no message is taken from the
+    // server and then dropped when the wait ends.
+    async fn fetch_ready_until(
+        &mut self,
+        partitions: &[PartitionId],
+        max: usize,
+        deadline: Option<Instant>,
+    ) -> Result<Option<(usize, Vec<Delivery>)>, TransportError> {
+        if partitions.is_empty() || max == 0 {
+            return Ok(Some((0, Vec::new())));
+        }
+        let mut idle = IDLE_POLL_INITIAL;
+        loop {
+            for (index, partition) in partitions.iter().enumerate() {
+                let deliveries = self.fetch_now(partition, max).await?;
+                if !deliveries.is_empty() {
+                    return Ok(Some((index, deliveries)));
+                }
+            }
+            if deadline.is_some_and(|deadline| Instant::now() >= deadline) {
+                return Ok(None);
+            }
+            tokio::time::sleep(idle).await;
+            idle = (idle * 2).min(IDLE_POLL_MAX);
+        }
+    }
+
     async fn fetch_now(
         &mut self,
         partition: &PartitionId,
@@ -171,20 +198,18 @@ impl PartitionReader for NatsReader {
         partitions: &[PartitionId],
         max: usize,
     ) -> Result<(usize, Vec<Delivery>), TransportError> {
-        if partitions.is_empty() || max == 0 {
-            return Ok((0, Vec::new()));
-        }
-        let mut idle = IDLE_POLL_INITIAL;
-        loop {
-            for (index, partition) in partitions.iter().enumerate() {
-                let deliveries = self.fetch_now(partition, max).await?;
-                if !deliveries.is_empty() {
-                    return Ok((index, deliveries));
-                }
-            }
-            tokio::time::sleep(idle).await;
-            idle = (idle * 2).min(IDLE_POLL_MAX);
-        }
+        let fetched = self.fetch_ready_until(partitions, max, None).await?;
+        Ok(fetched.expect("a fetch without a deadline returns only with messages"))
+    }
+
+    async fn fetch_ready_within(
+        &mut self,
+        partitions: &[PartitionId],
+        max: usize,
+        wait: Duration,
+    ) -> Result<Option<(usize, Vec<Delivery>)>, TransportError> {
+        self.fetch_ready_until(partitions, max, Some(Instant::now() + wait))
+            .await
     }
 
     // An acknowledgement that does not reach the server only leaves the message to be delivered

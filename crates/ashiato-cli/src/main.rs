@@ -22,6 +22,7 @@ use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use clap::{Parser, Subcommand};
 
 mod run;
+mod worker;
 
 const DATABASE_FILE: &str = "ashiato.duckdb";
 const EVIDENCE_DIR: &str = "evidence";
@@ -40,6 +41,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     Run(run::RunArgs),
+    IngestWorker(worker::IngestWorkerArgs),
     Ingest(IngestArgs),
     Analyze(AnalyzeArgs),
     Rules {
@@ -140,6 +142,7 @@ struct AnalyzeArgs {
 fn main() -> anyhow::Result<()> {
     match Cli::parse().command {
         Command::Run(args) => run::run(&args),
+        Command::IngestWorker(args) => worker::ingest_worker(&args),
         Command::Ingest(args) => ingest(&args),
         Command::Analyze(args) => analyze(&args),
         Command::Rules {

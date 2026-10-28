@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::time::Duration;
 
 use ashiato_core::AnalysisWindow;
 use ashiato_core::rule::SignalRule;
@@ -15,6 +16,12 @@ use duckdb::types::{TimeUnit, Value};
 
 use crate::batch_queries::{BatchQueries, BatchQueryError};
 use crate::{PipelineStore, StoreError};
+
+// The messages taken but not committed are not acknowledged, and through NATS they keep their
+// room in the stream until then. When no more messages come in this long, they are committed
+// rather than waiting for commit_every, because the workers may be waiting for that room
+// (8.2 節).
+const IDLE_COMMIT_WAIT: Duration = Duration::from_millis(20);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AnalyzerSettings {
@@ -284,10 +291,21 @@ impl Analyzer {
             .iter()
             .map(|index| self.partitions[*index].id.clone())
             .collect();
-        let (chosen, deliveries) = reader
-            .fetch_ready(&partitions, self.settings.fetch_max)
-            .await
-            .map_err(AnalyzerError::Receive)?;
+        let fetched = if self.uncommitted_messages > 0 {
+            reader
+                .fetch_ready_within(&partitions, self.settings.fetch_max, IDLE_COMMIT_WAIT)
+                .await
+        } else {
+            reader
+                .fetch_ready(&partitions, self.settings.fetch_max)
+                .await
+                .map(Some)
+        };
+        let Some((chosen, deliveries)) = fetched.map_err(AnalyzerError::Receive)? else {
+            self.commit_and_ack(reader).await?;
+            self.finalize_batches()?;
+            return Ok(());
+        };
         if deliveries.is_empty() {
             return Err(AnalyzerError::Closed(partitions[chosen].clone()));
         }

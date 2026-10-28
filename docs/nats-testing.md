@@ -19,8 +19,11 @@ docker pull nats:2.10.29
 ## 実行
 
 ```sh
-cargo test -p ashiato-nats --test nats -- --ignored
+cargo test -p ashiato-nats -- --ignored
+cargo test -p ashiato-cli --test distributed -- --ignored
 ```
+
+`ashiato-cli` のテストは、`ashiato run` と `ashiato ingest-worker` を別々のプロセスとして起動し、ソースには MinIO を使う。MinIO のイメージの取得は `docs/s3-testing.md` に書いた。
 
 テストは、テストごとに NATS サーバーのコンテナを 1 つ起動し、テストが終わるとき（失敗した場合を含む）にコンテナを削除する。JetStream の保存先はコンテナの中に置くので、コンテナを再起動してもストリームは残り、コンテナを削除すればデータは残らない。NATS サーバーのポートは `127.0.0.1` の空いているポートに割り当てる。コンテナを再起動しても同じポートで待ち受けるように、ポートは Docker に選ばせず、テストが選んで指定する。
 
@@ -29,6 +32,8 @@ cargo test -p ashiato-nats --test nats -- --ignored
 ```sh
 docker rm --force $(docker ps --quiet --filter label=ashiato-test=nats)
 ```
+
+テストが起動した `ashiato` のプロセスは、テストが失敗した場合も止める。テストのプロセスを強制終了した場合は残ることがあるので、`ps` で確かめて止める。
 
 ## 確かめていること
 
@@ -42,3 +47,11 @@ docker rm --force $(docker ps --quiet --filter label=ashiato-test=nats)
   - NATS サーバーを途中で再起動しても、分析コンシューマーの表が変わらない。
   - ストリームからメッセージを 1 つ消して位置の穴を作ると、コンシューマーを 1 回作り直した後にエラーになる。
   - パーティションごとに、ストリームに残っている最後のメッセージの次の位置が求まる。
+- `crates/ashiato-nats/tests/control.rs`
+  - 分析コンシューマーが、ワーカー用の実行の定義と、確定した位置を答える。範囲外のワーカー ID には、理由を付けて断る。
+  - 1 つの応答に収まらない一覧を、応答の大きさに収まるページに分けて返し、取り込みワーカーが全件を集める。
+  - 分析コンシューマーが答えるまで、取り込みワーカーは要求を送り直す。
+- `crates/ashiato-cli/tests/distributed.rs`
+  - 分散の配置の出力とワークスペースの表が、1 プロセスの配置と一致し、終了時にストリームが消えている（`streaming-pipeline.md` の 14.1.3 節の 1〜3）。
+  - 取り込みワーカーをファイルの途中で止めて再起動しても、出力と表が一致する。
+  - 範囲外のワーカー ID で起動した取り込みワーカーは、エラーで止まる。

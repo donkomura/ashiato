@@ -14,9 +14,10 @@ use ashiato_ingest::{
     DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment, S3Location,
     S3Source, WorkerSettings, list_local, run_workers, trail_root,
 };
+use ashiato_nats::{ControlService, EventStream, max_ack_pending, serve_control, validate_run_id};
 use ashiato_pipeline::{
-    Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation, assign_partitions,
-    partition_channels, validate_distributed,
+    CommittedPositions, Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation,
+    assign_partitions, partition_channels, validate_distributed,
 };
 
 use crate::{DATABASE_FILE, load_catalog_from, report_warning, write_output};
@@ -38,7 +39,7 @@ pub(crate) struct RunArgs {
 
 pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
     let plan = RunPlan::load(&args.plan)?;
-    reject_unsupported(&plan)?;
+    validate_placement(&plan)?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
@@ -73,13 +74,18 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
                 .all(|skipped| skipped.rule_id != rule.id)
         })
         .collect();
-    let (store, metrics) = runtime.block_on(stream(
-        &plan,
-        store,
-        manifest,
-        signal_rules,
-        source.file_source(),
-    ))?;
+    let (store, metrics) = match plan.placement.mode {
+        PlacementMode::SingleProcess => runtime.block_on(stream(
+            &plan,
+            store,
+            manifest,
+            signal_rules,
+            source.file_source(),
+        ))?,
+        PlacementMode::Distributed => {
+            runtime.block_on(analyze_distributed(&plan, store, manifest, signal_rules))?
+        }
+    };
 
     let counts = store.ingest_counts()?;
     let mut analysis = correlate_streamed(
@@ -134,12 +140,12 @@ fn report_metrics(metrics: AnalyzerMetrics) {
     );
 }
 
-// Settings for later stages of the implementation are rejected rather than ignored, so that a
-// run never silently differs from its plan.
-fn reject_unsupported(plan: &RunPlan) -> anyhow::Result<()> {
+// The run id names the subjects and the stream of NATS, so it is checked before the workspace
+// is made.
+fn validate_placement(plan: &RunPlan) -> anyhow::Result<()> {
     validate_distributed(plan)?;
     if plan.placement.mode == PlacementMode::Distributed {
-        bail!("placement.mode: distributed is not supported yet; use single_process");
+        validate_run_id(&plan.run_id)?;
     }
     Ok(())
 }
@@ -214,22 +220,8 @@ async fn stream(
     signal_rules: Vec<SignalRule>,
     source: Arc<dyn FileSource>,
 ) -> anyhow::Result<(PipelineStore, AnalyzerMetrics)> {
-    let window = plan.analysis_window();
     let allowed_lateness = plan.pipeline.allowed_lateness.to_time_delta();
-    let settings = AnalyzerSettings {
-        batch: plan.pipeline.batch.to_time_delta(),
-        allowed_lateness,
-        read_since: window.baseline_since(),
-        fetch_max: FETCH_MAX,
-        commit_every: COMMIT_EVERY,
-    };
-    let mut analyzer = Analyzer::open(store, manifest.clone(), settings)?
-        .with_queries(signal_rules, window)
-        .with_max_skew(
-            plan.pipeline
-                .max_skew
-                .map(|max_skew| max_skew.to_time_delta()),
-        );
+    let mut analyzer = open_analyzer(plan, store, manifest.clone(), signal_rules)?;
     let assignments: Vec<PartitionAssignment> = manifest
         .partitions
         .into_iter()
@@ -293,6 +285,73 @@ async fn stream(
             Ok((analyzer.into_store(), metrics))
         }
     }
+}
+
+fn open_analyzer(
+    plan: &RunPlan,
+    store: PipelineStore,
+    manifest: Manifest,
+    signal_rules: Vec<SignalRule>,
+) -> Result<Analyzer, AnalyzerError> {
+    let window = plan.analysis_window();
+    let settings = AnalyzerSettings {
+        batch: plan.pipeline.batch.to_time_delta(),
+        allowed_lateness: plan.pipeline.allowed_lateness.to_time_delta(),
+        read_since: window.baseline_since(),
+        fetch_max: FETCH_MAX,
+        commit_every: COMMIT_EVERY,
+    };
+    Ok(Analyzer::open(store, manifest, settings)?
+        .with_queries(signal_rules, window)
+        .with_max_skew(
+            plan.pipeline
+                .max_skew
+                .map(|max_skew| max_skew.to_time_delta()),
+        ))
+}
+
+// The ingest workers run as `ashiato ingest-worker` in other processes and take their part of
+// the run from the control requests that this process answers (7.4 節).
+async fn analyze_distributed(
+    plan: &RunPlan,
+    store: PipelineStore,
+    manifest: Manifest,
+    signal_rules: Vec<SignalRule>,
+) -> anyhow::Result<(PipelineStore, AnalyzerMetrics)> {
+    let url = plan
+        .placement
+        .nats_url
+        .as_deref()
+        .context("placement.mode: distributed needs placement.nats_url")?;
+    let client = async_nats::connect(url)
+        .await
+        .with_context(|| format!("failed to connect to {url}"))?;
+    let partitions: Vec<PartitionId> = manifest
+        .partitions
+        .iter()
+        .map(|partition| partition.partition.clone())
+        .collect();
+    let events =
+        EventStream::create(client.clone(), &plan.run_id, partitions.len(), &plan.broker).await?;
+    let committed = CommittedPositions::default();
+    let mut analyzer = open_analyzer(plan, store, manifest.clone(), signal_rules)?
+        .with_committed_positions(committed.clone());
+    let service = ControlService::new(plan, manifest, committed)?;
+    let server = serve_control(client.clone(), &plan.run_id, service).await?;
+    let mut reader = events
+        .reader(
+            partitions,
+            &plan.broker,
+            max_ack_pending(COMMIT_EVERY, FETCH_MAX),
+        )
+        .await?;
+    // A failed run keeps the stream, so that the analyzer restarted with the same plan receives
+    // the messages that it has not committed (10 節).
+    analyzer.run(&mut reader).await?;
+    drop(server);
+    events.delete().await?;
+    let metrics = analyzer.metrics();
+    Ok((analyzer.into_store(), metrics))
 }
 
 // Each worker has its own decode threads, so the CPUs are divided among the workers.

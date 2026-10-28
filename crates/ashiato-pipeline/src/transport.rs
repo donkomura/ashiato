@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 
 use crate::{PartitionId, PartitionMessage};
@@ -53,6 +55,18 @@ pub trait PartitionReader: Send {
         partitions: &[PartitionId],
         max: usize,
     ) -> Result<(usize, Vec<Delivery>), TransportError>;
+    // Like fetch_ready, but returns None once wait has passed with no message ready. The default
+    // waits as long as fetch_ready, which suits a transport that frees the room of a message as
+    // soon as it is fetched rather than when it is acknowledged.
+    async fn fetch_ready_within(
+        &mut self,
+        partitions: &[PartitionId],
+        max: usize,
+        wait: Duration,
+    ) -> Result<Option<(usize, Vec<Delivery>)>, TransportError> {
+        let _ = wait;
+        self.fetch_ready(partitions, max).await.map(Some)
+    }
     async fn ack(&self, deliveries: &[DeliveryHandle]) -> Result<(), TransportError>;
     async fn reset(&mut self, partition: &PartitionId) -> Result<(), TransportError>;
 }
