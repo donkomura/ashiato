@@ -193,7 +193,7 @@ async fn stream(
         WorkerSettings {
             allowed_lateness,
             max_message_size: usize::try_from(plan.broker.max_message_size)?,
-            decode_threads: NonZeroUsize::MIN,
+            decode_threads: std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     ));

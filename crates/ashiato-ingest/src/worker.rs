@@ -1,3 +1,4 @@
+use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -9,7 +10,8 @@ use ashiato_pipeline::{
 };
 use async_trait::async_trait;
 use chrono::TimeDelta;
-use tokio::task::JoinSet;
+use tokio::sync::Semaphore;
+use tokio::task::{JoinHandle, JoinSet};
 
 use crate::normalize::{
     ContentError, EventRow, FileDigest, decompress, estimated_size, normalize_records, record_batch,
@@ -82,19 +84,25 @@ pub enum WorkerError {
     Task(#[source] tokio::task::JoinError),
 }
 
+// The decode threads are taken from the blocking pool of the runtime, and a semaphore with
+// decode_threads permits lets only that many files of the worker be decoded at once, so that the
+// partitions of a worker share decode_threads threads (6.1 節).
 pub async fn run_worker(
     assignments: Vec<PartitionAssignment>,
     source: Arc<dyn FileSource>,
     writer: Arc<dyn PartitionWriter>,
     settings: WorkerSettings,
 ) -> Result<(), WorkerError> {
+    let decoders = Arc::new(Semaphore::new(settings.decode_threads.get()));
     let mut tasks = JoinSet::new();
     for assignment in assignments {
-        let source = Arc::clone(&source);
-        let writer = Arc::clone(&writer);
-        tasks.spawn(async move {
-            ingest_partition(&assignment, source.as_ref(), writer.as_ref(), settings).await
-        });
+        tasks.spawn(ingest_partition(
+            assignment,
+            Arc::clone(&source),
+            Arc::clone(&writer),
+            Arc::clone(&decoders),
+            settings,
+        ));
     }
     while let Some(result) = tasks.join_next().await {
         result.map_err(WorkerError::Task)??;
@@ -102,39 +110,70 @@ pub async fn run_worker(
     Ok(())
 }
 
-pub async fn ingest_partition(
-    assignment: &PartitionAssignment,
-    source: &dyn FileSource,
-    writer: &dyn PartitionWriter,
+struct DecodedFile {
+    digest: FileDigest,
+    rows: Result<Vec<EventRow>, ContentError>,
+}
+
+type FileTask = JoinHandle<Result<DecodedFile, WorkerError>>;
+
+struct Prefetched<'a>(VecDeque<(&'a ManifestEntry, FileTask)>);
+
+// Stops the reads and decodes still in flight when the partition stops with an error.
+impl Drop for Prefetched<'_> {
+    fn drop(&mut self) {
+        for (_, task) in &self.0 {
+            task.abort();
+        }
+    }
+}
+
+async fn ingest_partition(
+    assignment: PartitionAssignment,
+    source: Arc<dyn FileSource>,
+    writer: Arc<dyn PartitionWriter>,
+    decoders: Arc<Semaphore>,
     settings: WorkerSettings,
 ) -> Result<(), WorkerError> {
     let partition = &assignment.manifest.partition;
-    let send = |message| async move {
-        writer
-            .put(message)
-            .await
-            .map_err(|source| WorkerError::Transport {
-                partition: partition.clone(),
-                source,
-            })
-    };
-    for entry in &assignment.manifest.files {
-        if entry.file_seq < assignment.start.file_seq {
-            continue;
+    let send = |message| {
+        let writer = &writer;
+        async move {
+            writer
+                .put(message)
+                .await
+                .map_err(|source| WorkerError::Transport {
+                    partition: partition.clone(),
+                    source,
+                })
         }
-        let content = source
-            .read(entry)
-            .await
-            .map_err(|source| WorkerError::Source {
-                partition: partition.clone(),
-                file_seq: entry.file_seq,
-                uri: entry.uri.clone(),
-                source,
-            })?;
-        let digest = FileDigest::of(&content);
-        let rows = tokio::task::spawn_blocking(move || normalize_records(&decompress(&content)?))
-            .await
-            .map_err(WorkerError::Task)?;
+    };
+    let mut entries = assignment
+        .manifest
+        .files
+        .iter()
+        .filter(|entry| entry.file_seq >= assignment.start.file_seq);
+    let mut prefetched = Prefetched(VecDeque::new());
+    loop {
+        // A slot is freed only after the messages of its file are sent, and the messages are
+        // sent here rather than on a decode thread. A partition whose sends wait thus holds at
+        // most prefetch_files files and no decode thread (streaming-implementation-plan.md 4.9 節).
+        while prefetched.0.len() < settings.prefetch_files.get() {
+            let Some(entry) = entries.next() else {
+                break;
+            };
+            let task = tokio::spawn(fetch_and_decode(
+                partition.clone(),
+                entry.clone(),
+                Arc::clone(&source),
+                Arc::clone(&decoders),
+            ));
+            prefetched.0.push_back((entry, task));
+        }
+        let Some((entry, task)) = prefetched.0.pop_front() else {
+            break;
+        };
+        let DecodedFile { digest, rows } = task.await.map_err(WorkerError::Task)??;
         let watermark = file_watermark(entry.file_time, settings.allowed_lateness);
         let skip = if entry.file_seq == assignment.start.file_seq {
             assignment.start.record_offset
@@ -142,7 +181,15 @@ pub async fn ingest_partition(
             0
         };
         let messages = match rows {
-            Ok(rows) => file_chunks(assignment, entry, &digest, &rows, skip, watermark, settings),
+            Ok(rows) => file_chunks(
+                &assignment,
+                entry,
+                &digest,
+                &rows,
+                skip,
+                watermark,
+                settings,
+            ),
             Err(error) => vec![PartitionMessage::FileError {
                 partition: partition.clone(),
                 position: Position::new(entry.file_seq, 0),
@@ -161,6 +208,36 @@ pub async fn ingest_partition(
         position: Position::new(file_count, 0),
     })
     .await
+}
+
+async fn fetch_and_decode(
+    partition: PartitionId,
+    entry: ManifestEntry,
+    source: Arc<dyn FileSource>,
+    decoders: Arc<Semaphore>,
+) -> Result<DecodedFile, WorkerError> {
+    let content = source
+        .read(&entry)
+        .await
+        .map_err(|source| WorkerError::Source {
+            partition,
+            file_seq: entry.file_seq,
+            uri: entry.uri.clone(),
+            source,
+        })?;
+    let permit = decoders
+        .acquire_owned()
+        .await
+        .expect("the semaphore of the decode threads is never closed");
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        DecodedFile {
+            digest: FileDigest::of(&content),
+            rows: decompress(&content).and_then(|text| normalize_records(&text)),
+        }
+    })
+    .await
+    .map_err(WorkerError::Task)
 }
 
 fn file_chunks(
