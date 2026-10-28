@@ -2,12 +2,10 @@ use std::ffi::OsString;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, bail};
+use anyhow::Context;
+use ashiato_ingest::S3Source;
+pub use ashiato_ingest::{Listing, S3Location};
 use async_trait::async_trait;
-use aws_config::BehaviorVersion;
-use aws_config::meta::region::RegionProviderChain;
-use aws_sdk_s3::Client;
-use aws_sdk_s3::config::Region;
 use chrono::{Datelike, NaiveDate};
 use futures_util::{StreamExt, TryStreamExt, stream};
 
@@ -22,32 +20,7 @@ const SERVICE_LEVEL: usize = 1;
 const REGION_LEVEL: usize = 2;
 const YEAR_LEVEL: usize = 3;
 const DAY_LEVEL: usize = 5;
-const DEFAULT_REGION: &str = "us-east-1";
-const LEGACY_EU_LOCATION: &str = "EU";
-const LEGACY_EU_REGION: &str = "eu-west-1";
 const CONCURRENT_REQUESTS: usize = 16;
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct S3Location {
-    pub bucket: String,
-    pub prefix: String,
-}
-
-impl S3Location {
-    pub fn parse(uri: &str) -> anyhow::Result<Self> {
-        let Some(path) = uri.strip_prefix(SCHEME) else {
-            bail!("expected an {SCHEME} URI, but got {uri}");
-        };
-        let (bucket, prefix) = path.split_once('/').unwrap_or((path, ""));
-        if bucket.is_empty() {
-            bail!("the S3 URI {uri} has no bucket");
-        }
-        Ok(Self {
-            bucket: bucket.to_owned(),
-            prefix: prefix.to_owned(),
-        })
-    }
-}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct KeyFilter {
@@ -147,12 +120,6 @@ fn log_levels(directories: &str) -> Option<Vec<&str>> {
     Some(levels.to_vec())
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct Listing {
-    pub prefixes: Vec<String>,
-    pub keys: Vec<String>,
-}
-
 #[async_trait]
 pub trait ObjectStore: Sync {
     async fn list(&self, bucket: &str, prefix: &str) -> anyhow::Result<Listing>;
@@ -247,86 +214,24 @@ async fn download_object(
 }
 
 pub struct AwsObjectStore {
-    client: Client,
+    source: S3Source,
 }
 
 impl AwsObjectStore {
     pub async fn connect(bucket: &str) -> anyhow::Result<Self> {
-        let region = RegionProviderChain::default_provider().or_else(DEFAULT_REGION);
-        let config = aws_config::defaults(BehaviorVersion::latest())
-            .region(region)
-            .load()
-            .await;
-        let client = Client::new(&config);
-        let Some(bucket_region) = bucket_region(&client, bucket).await else {
-            return Ok(Self { client });
-        };
-        let config = aws_sdk_s3::config::Builder::from(&config)
-            .region(Region::new(bucket_region))
-            .build();
         Ok(Self {
-            client: Client::from_conf(config),
+            source: S3Source::connect(bucket, None).await,
         })
     }
-}
-
-// Trail buckets often live in a region other than the investigator's default, and S3
-// rejects requests sent to the wrong region. Without s3:GetBucketLocation, the
-// configured region is used as is.
-async fn bucket_region(client: &Client, bucket: &str) -> Option<String> {
-    let output = client
-        .get_bucket_location()
-        .bucket(bucket)
-        .send()
-        .await
-        .ok()?;
-    let region = match output
-        .location_constraint()
-        .map(|location| location.as_str())
-    {
-        None | Some("") => DEFAULT_REGION,
-        Some(LEGACY_EU_LOCATION) => LEGACY_EU_REGION,
-        Some(region) => region,
-    };
-    Some(region.to_owned())
 }
 
 #[async_trait]
 impl ObjectStore for AwsObjectStore {
     async fn list(&self, bucket: &str, prefix: &str) -> anyhow::Result<Listing> {
-        let mut pages = self
-            .client
-            .list_objects_v2()
-            .bucket(bucket)
-            .prefix(prefix)
-            .delimiter("/")
-            .into_paginator()
-            .send();
-        let mut listing = Listing::default();
-        while let Some(page) = pages.next().await {
-            let page = page?;
-            listing.prefixes.extend(
-                page.common_prefixes()
-                    .iter()
-                    .filter_map(|common| common.prefix().map(str::to_owned)),
-            );
-            listing.keys.extend(
-                page.contents()
-                    .iter()
-                    .filter_map(|object| object.key().map(str::to_owned)),
-            );
-        }
-        Ok(listing)
+        Ok(self.source.list_delimited(bucket, prefix).await?)
     }
 
     async fn get(&self, bucket: &str, key: &str) -> anyhow::Result<Vec<u8>> {
-        let output = self
-            .client
-            .get_object()
-            .bucket(bucket)
-            .key(key)
-            .send()
-            .await?;
-        Ok(output.body.collect().await?.into_bytes().to_vec())
+        Ok(self.source.get_latest(bucket, key).await?)
     }
 }

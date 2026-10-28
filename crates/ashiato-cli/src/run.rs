@@ -1,5 +1,5 @@
 use std::num::{NonZeroU32, NonZeroUsize};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use anyhow::{Context, bail};
@@ -11,8 +11,8 @@ use ashiato_core::scoring::{ScoringSettings, score};
 use ashiato_core::validate::validate_streaming;
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
-    DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment,
-    WorkerSettings, list_local, run_workers,
+    DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment, S3Location,
+    S3Source, WorkerSettings, list_local, run_workers, trail_root,
 };
 use ashiato_pipeline::{
     Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation, assign_partitions,
@@ -38,7 +38,11 @@ pub(crate) struct RunArgs {
 
 pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
     let plan = RunPlan::load(&args.plan)?;
-    let root = local_root(&plan)?;
+    reject_unsupported(&plan)?;
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()?;
+    let source = runtime.block_on(PlanSource::open(&plan))?;
     let rule_dirs = rule_dirs(&plan)?;
     let catalog = load_catalog_from(&rule_dirs, &plan.ruleset_dirs)?;
     let rules = plan.context.apply_params(&catalog.rules)?;
@@ -51,7 +55,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         .context("the run plan must be a file in the workspace directory")?;
 
     let mut store = PipelineStore::open(&workspace.join(DATABASE_FILE))?;
-    let manifest = store.start_run(plan.digest(), || list(&root, &plan))?;
+    let manifest = store.start_run(plan.digest(), || runtime.block_on(source.list(&plan)))?;
     for violation in validate_streaming(&selection.rules, plan.pipeline.batch) {
         eprintln!("warning: {violation}; the rule is skipped");
     }
@@ -69,10 +73,13 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
                 .all(|skipped| skipped.rule_id != rule.id)
         })
         .collect();
-    let store = tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()?
-        .block_on(stream(&plan, store, manifest, signal_rules))?;
+    let store = runtime.block_on(stream(
+        &plan,
+        store,
+        manifest,
+        signal_rules,
+        source.file_source(),
+    ))?;
 
     let counts = store.ingest_counts()?;
     let mut analysis = correlate_streamed(
@@ -115,13 +122,59 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
 
 // Settings for later stages of the implementation are rejected rather than ignored, so that a
 // run never silently differs from its plan.
-fn local_root(plan: &RunPlan) -> anyhow::Result<PathBuf> {
+fn reject_unsupported(plan: &RunPlan) -> anyhow::Result<()> {
     if plan.placement.mode == PlacementMode::Distributed {
         bail!("placement.mode: distributed is not supported yet; use single_process");
     }
-    match &plan.source.location {
-        SourceLocation::Local { root } => Ok(root.clone()),
-        SourceLocation::S3 { .. } => bail!("source.kind: s3 is not supported yet; use local"),
+    Ok(())
+}
+
+enum PlanSource {
+    Local(PathBuf),
+    S3(S3Location, Arc<S3Source>),
+}
+
+impl PlanSource {
+    // The credentials of S3 are read by the default chain of the AWS SDK.
+    async fn open(plan: &RunPlan) -> anyhow::Result<Self> {
+        match &plan.source.location {
+            SourceLocation::Local { root } => Ok(Self::Local(root.clone())),
+            SourceLocation::S3 { uri, endpoint_url } => {
+                let location = S3Location::parse(uri)?;
+                trail_root(&location.prefix)?;
+                let source = S3Source::connect(&location.bucket, endpoint_url.as_deref()).await;
+                Ok(Self::S3(location, Arc::new(source)))
+            }
+        }
+    }
+
+    async fn list(&self, plan: &RunPlan) -> anyhow::Result<Manifest> {
+        let scope = ListScope::from_plan(plan);
+        let (manifest, unrecognized) = match self {
+            Self::Local(root) => {
+                let listing = list_local(root, &scope)?;
+                let paths = listing.unrecognized.iter();
+                let unrecognized = paths.map(|path| path.display().to_string()).collect();
+                (listing.manifest, unrecognized)
+            }
+            Self::S3(location, source) => {
+                let listing = source.list(location, &scope).await?;
+                (listing.manifest, listing.unrecognized)
+            }
+        };
+        for file in unrecognized {
+            eprintln!(
+                "warning: skipped {file}, whose name does not follow the CloudTrail log file layout"
+            );
+        }
+        Ok(manifest)
+    }
+
+    fn file_source(&self) -> Arc<dyn FileSource> {
+        match self {
+            Self::Local(_) => Arc::new(LocalSource),
+            Self::S3(_, source) => Arc::clone(source) as Arc<dyn FileSource>,
+        }
     }
 }
 
@@ -139,22 +192,12 @@ fn rule_dirs(plan: &RunPlan) -> anyhow::Result<Vec<PathBuf>> {
         .collect())
 }
 
-fn list(root: &Path, plan: &RunPlan) -> anyhow::Result<Manifest> {
-    let listing = list_local(root, &ListScope::from_plan(plan))?;
-    for path in &listing.unrecognized {
-        eprintln!(
-            "warning: skipped {}, whose name does not follow the CloudTrail log file layout",
-            path.display()
-        );
-    }
-    Ok(listing.manifest)
-}
-
 async fn stream(
     plan: &RunPlan,
     store: PipelineStore,
     manifest: Manifest,
     signal_rules: Vec<SignalRule>,
+    source: Arc<dyn FileSource>,
 ) -> anyhow::Result<PipelineStore> {
     let window = plan.analysis_window();
     let allowed_lateness = plan.pipeline.allowed_lateness.to_time_delta();
@@ -204,7 +247,7 @@ async fn stream(
         .collect();
     let worker = tokio::spawn(run_workers(
         workers,
-        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        source,
         Arc::new(writer),
         WorkerSettings {
             allowed_lateness,

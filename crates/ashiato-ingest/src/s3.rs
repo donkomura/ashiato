@@ -330,13 +330,21 @@ impl S3Source {
         }
     }
 
-    async fn get(&self, entry: &ManifestEntry) -> Result<Vec<u8>, S3Error> {
-        let uri = &entry.uri;
+    pub async fn get_latest(&self, bucket: &str, key: &str) -> Result<Vec<u8>, S3Error> {
+        self.get(&object_uri(bucket, key), None, None).await
+    }
+
+    async fn get(
+        &self,
+        uri: &str,
+        version_id: Option<&str>,
+        etag: Option<&str>,
+    ) -> Result<Vec<u8>, S3Error> {
         let location = S3Location::parse(uri)?;
         let changed = |actual: Option<&str>| {
             Failure::Final(S3Error::EtagMismatch {
-                uri: uri.clone(),
-                expected: entry.etag.clone().unwrap_or_default(),
+                uri: uri.to_owned(),
+                expected: etag.unwrap_or_default().to_owned(),
                 actual: actual.map(str::to_owned),
             })
         };
@@ -348,16 +356,18 @@ impl S3Source {
                 .get_object()
                 .bucket(&location.bucket)
                 .key(&location.prefix)
-                .set_version_id(entry.version_id.clone())
-                .set_if_match(entry.etag.clone())
+                .set_version_id(version_id.map(str::to_owned))
+                .set_if_match(etag.map(str::to_owned))
                 .send()
                 .await
                 .map_err(|error| match status(&error) {
-                    Some(NOT_FOUND) => Failure::Final(S3Error::Missing { uri: uri.clone() }),
+                    Some(NOT_FOUND) => Failure::Final(S3Error::Missing {
+                        uri: uri.to_owned(),
+                    }),
                     Some(PRECONDITION_FAILED) => changed(None),
                     _ => request_failure("GetObject", uri, &error),
                 })?;
-            if entry.etag.is_some() && output.e_tag() != entry.etag.as_deref() {
+            if etag.is_some() && output.e_tag() != etag {
                 return Err(changed(output.e_tag()));
             }
             let body = output
@@ -399,7 +409,10 @@ impl S3Source {
 #[async_trait]
 impl FileSource for S3Source {
     async fn read(&self, entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
-        Ok(self.get(entry).await?)
+        let version_id = entry.version_id.as_deref();
+        Ok(self
+            .get(&entry.uri, version_id, entry.etag.as_deref())
+            .await?)
     }
 }
 

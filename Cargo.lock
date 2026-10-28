@@ -293,8 +293,6 @@ dependencies = [
  "ashiato-pipeline",
  "ashiato-testkit",
  "async-trait",
- "aws-config",
- "aws-sdk-s3",
  "chrono",
  "clap",
  "duckdb",
