@@ -6,6 +6,7 @@ use ashiato_core::Severity;
 use ashiato_core::analysis::correlate_available;
 use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
 use ashiato_core::rule::{Rule, SignalRule};
+use ashiato_core::scoring::{ScoringSettings, score};
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
     FileSource, ListScope, LocalSource, PartitionAssignment, WorkerSettings, list_local, run_worker,
@@ -70,6 +71,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
     for warning in &analysis.warnings {
         report_warning(warning);
     }
+    let scores = score(&analysis.signals, ScoringSettings::default());
     if !args.severity.is_empty() {
         analysis.retain_severities(&args.severity);
     }
@@ -88,7 +90,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         file_errors: counts.file_errors,
         late_events: counts.late_events,
     });
-    write_output(&run, analysis, args.emit_signals, args.summary)
+    write_output(&run, analysis, scores, args.emit_signals, args.summary)
 }
 
 // Settings for later stages of the implementation are rejected rather than ignored, so that a

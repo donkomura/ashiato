@@ -8,9 +8,10 @@ use anyhow::{Context, bail};
 use ashiato_cli::s3::{AwsObjectStore, KeyFilter, S3Location, download};
 use ashiato_core::analysis::Analysis;
 use ashiato_core::lineage::LineageWarning;
-use ashiato_core::output::{JsonLinesSink, OutputRecord, RunRecord, Sink};
+use ashiato_core::output::{JsonLinesSink, OriginScoreRecord, OutputRecord, RunRecord, Sink};
 use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules};
 use ashiato_core::ruleset::{RulesetError, Rulesets};
+use ashiato_core::scoring::{ScoringSettings, score};
 use ashiato_core::validate::validate;
 use ashiato_core::{AnalysisWindow, Severity};
 use ashiato_duckdb::fixture::{Verdict, run_fixture};
@@ -232,6 +233,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
     for warning in &analysis.warnings {
         report_warning(warning);
     }
+    let scores = score(&analysis.signals, ScoringSettings::default());
     if !args.severity.is_empty() {
         analysis.retain_severities(&args.severity);
     }
@@ -244,12 +246,13 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         rulesets: selection.rulesets,
         data: analysis.data,
     });
-    write_output(&run, analysis, args.emit_signals, args.summary)
+    write_output(&run, analysis, scores, args.emit_signals, args.summary)
 }
 
 fn write_output(
     run: &OutputRecord,
     analysis: Analysis,
+    scores: Vec<OriginScoreRecord>,
     emit_signals: bool,
     summary: bool,
 ) -> anyhow::Result<()> {
@@ -270,6 +273,9 @@ fn write_output(
         }
         for found in analysis.matches {
             sink.write(&OutputRecord::ScenarioMatch(found))?;
+        }
+        for found in scores {
+            sink.write(&OutputRecord::OriginScore(found))?;
         }
     }
     sink.into_inner().flush()?;
