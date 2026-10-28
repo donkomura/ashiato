@@ -120,3 +120,15 @@ async fn rules_using_the_baseline_give_the_same_verdicts_in_the_pipeline() {
     ])
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn cross_account_s3_destruction_gives_the_same_verdicts_in_the_pipeline() {
+    assert_pipeline_verdicts(&[
+        "cross_account_s3_destruction",
+        "cross_account_assume_role",
+        "s3_bucket_enumeration",
+        "s3_object_read_or_copy",
+        "s3_delete_burst",
+    ])
+    .await;
+}

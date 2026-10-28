@@ -388,3 +388,66 @@ fn settings_that_are_not_implemented_yet_are_rejected() {
         );
     }
 }
+
+fn skipped_rule_ids(lines: &[Value]) -> Vec<&str> {
+    of_type(lines, "rule_skipped")
+        .into_iter()
+        .map(|line| line["rule_id"].as_str().unwrap())
+        .collect()
+}
+
+#[test]
+fn run_skips_the_rules_that_need_s3_data_events_after_streaming_all_batches() {
+    let case = RunCase::new();
+    case.write_plan(&PLAN.replace("rule: [test_repeated_console_login]\n", ""));
+
+    let lines = case.run(&[]);
+
+    assert_eq!(
+        lines[0]["data"],
+        json!({ "events": 2, "s3_data_events": false })
+    );
+    let skipped = skipped_rule_ids(&lines);
+    for rule_id in [
+        "cross_account_s3_destruction",
+        "s3_delete_burst",
+        "s3_object_read_or_copy",
+    ] {
+        assert!(skipped.contains(&rule_id), "{rule_id} in {skipped:?}");
+    }
+    assert!(
+        lines[1..=skipped.len()]
+            .iter()
+            .all(|line| line["type"] == "rule_skipped"),
+        "{lines:#?}"
+    );
+    for skipped in of_type(&lines, "rule_skipped") {
+        assert_eq!(skipped["reason"], "missing_data");
+        assert_eq!(skipped["requires"], json!(["s3_data_events"]));
+    }
+}
+
+#[test]
+fn run_does_not_skip_rules_when_s3_data_events_were_streamed() {
+    let case = RunCase::new();
+    case.write_plan(&PLAN.replace("rule: [test_repeated_console_login]\n", ""));
+    case.write_log(
+        at(11, 35),
+        vec![
+            RecordBuilder::new()
+                .set("eventTime", at(11, 30).to_rfc3339())
+                .set("eventSource", "s3.amazonaws.com")
+                .set("eventName", "GetObject")
+                .set("eventCategory", "Data")
+                .build(),
+        ],
+    );
+
+    let lines = case.run(&[]);
+
+    assert_eq!(
+        lines[0]["data"],
+        json!({ "events": 3, "s3_data_events": true })
+    );
+    assert!(skipped_rule_ids(&lines).is_empty(), "{lines:#?}");
+}

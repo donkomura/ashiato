@@ -2,6 +2,7 @@ use std::path::Path;
 
 use ashiato_core::SignalRow;
 use ashiato_core::lineage::{Caller, Federation, LineageEdge};
+use ashiato_core::query::DataAvailability;
 use ashiato_core::sequence::ObservedSignal;
 use ashiato_pipeline::{Manifest, ManifestEntry, PartitionId, PartitionManifest};
 use chrono::{DateTime, Utc};
@@ -178,6 +179,10 @@ impl PipelineStore {
             })
         })?;
         Ok(edges.collect::<Result<_, _>>()?)
+    }
+
+    pub fn data_availability(&self) -> Result<DataAvailability, StoreError> {
+        todo!()
     }
 
     pub fn ingest_counts(&self) -> Result<IngestCounts, StoreError> {
