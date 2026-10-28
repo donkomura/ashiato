@@ -61,6 +61,7 @@ struct PartitionState {
     progress: PartitionProgress,
     watermark: Option<EventTime>,
     committed_watermark: Option<EventTime>,
+    renewed_since_accepted: bool,
 }
 
 impl PartitionState {
@@ -79,6 +80,15 @@ impl PartitionState {
             (false, Some(watermark)) => PartitionWatermark::At(watermark),
         }
     }
+}
+
+enum Accepted {
+    AckNow(DeliveryHandle),
+    AckAfterCommit,
+    Gap {
+        expected: Position,
+        received: Position,
+    },
 }
 
 enum Received {
@@ -154,6 +164,7 @@ impl Analyzer {
                 progress,
                 watermark,
                 committed_watermark: watermark,
+                renewed_since_accepted: false,
             });
         }
         Ok(Self {
@@ -260,38 +271,72 @@ impl Analyzer {
         }
         let index = candidates[chosen];
         let mut acks_now = Vec::new();
+        let mut gap = None;
         for delivery in deliveries {
-            if let Some(handle) = self.accept(index, delivery)? {
-                acks_now.push(handle);
+            match self.accept(index, delivery)? {
+                Accepted::AckNow(handle) => acks_now.push(handle),
+                Accepted::AckAfterCommit => {}
+                // The deliveries after a gap are left unacknowledged, so that the new consumer
+                // delivers them again in the order of the stream.
+                Accepted::Gap { expected, received } => {
+                    gap = Some((expected, received));
+                    break;
+                }
             }
         }
         if !acks_now.is_empty() {
             reader.ack(&acks_now).await.map_err(AnalyzerError::Ack)?;
         }
-        Ok(())
+        match gap {
+            Some((expected, received)) => self.renew(reader, index, expected, received).await,
+            None => Ok(()),
+        }
     }
 
-    fn accept(
+    // A new consumer delivers the unacknowledged messages in the order of the stream, which
+    // removes a gap that a redelivery after ack_wait made. A gap that remains right after it is
+    // a lost message, which another new consumer would not bring back (10 節). The messages
+    // accepted but not committed yet are delivered again as duplicates, and every
+    // acknowledgement is still sent only after the commit that holds the message.
+    async fn renew<R: PartitionReader + ?Sized>(
         &mut self,
+        reader: &mut R,
         index: usize,
-        delivery: Delivery,
-    ) -> Result<Option<DeliveryHandle>, AnalyzerError> {
+        expected: Position,
+        received: Position,
+    ) -> Result<(), AnalyzerError> {
+        let partition = &mut self.partitions[index];
+        let gap = AnalyzerError::Gap {
+            partition: partition.id.clone(),
+            expected,
+            received,
+        };
+        if partition.renewed_since_accepted {
+            return Err(gap);
+        }
+        match reader.reset(&partition.id).await {
+            Ok(()) => {
+                partition.renewed_since_accepted = true;
+                Ok(())
+            }
+            Err(TransportError::RedeliveryUnsupported(_)) => Err(gap),
+            Err(error) => Err(AnalyzerError::Receive(error)),
+        }
+    }
+
+    fn accept(&mut self, index: usize, delivery: Delivery) -> Result<Accepted, AnalyzerError> {
         let Delivery { message, handle } = delivery;
         let partition = &mut self.partitions[index];
         self.uncommitted_messages += 1;
         match admit(&message, &partition.progress, partition.file_count) {
             Admission::Duplicate {
                 ack: AckTiming::Now,
-            } => return Ok(Some(handle)),
+            } => return Ok(Accepted::AckNow(handle)),
             Admission::Duplicate {
                 ack: AckTiming::AfterNextCommit,
             } => {}
             Admission::Gap { expected, received } => {
-                return Err(AnalyzerError::Gap {
-                    partition: partition.id.clone(),
-                    expected,
-                    received,
-                });
+                return Ok(Accepted::Gap { expected, received });
             }
             Admission::Accept {
                 skip_records,
@@ -346,11 +391,12 @@ impl Analyzer {
                 }
                 partition.progress.next = next;
                 partition.progress.ended |= ends_partition;
+                partition.renewed_since_accepted = false;
                 self.changed.insert(index);
             }
         }
         self.acks.push(handle);
-        Ok(None)
+        Ok(Accepted::AckAfterCommit)
     }
 
     // The received events, the files and the positions are committed in one transaction, so
