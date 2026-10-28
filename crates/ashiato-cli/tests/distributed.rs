@@ -8,7 +8,7 @@ use common::{BIG_ACCOUNT, BIG_REGION, Cluster, assert_same_run, finish, finish_a
 const BROKER: &str = "  max_messages_per_partition: 4\n";
 // Each file of the big partition takes several messages, so that a worker can be stopped
 // inside a file.
-const SMALL_MESSAGES: &str = "  max_messages_per_partition: 2\n  max_message_size: 8KiB\n";
+const SMALL_MESSAGES: &str = "  max_messages_per_partition: 2\n  max_message_size: 12KiB\n";
 const BIG_FILE_RECORDS: u64 = 20;
 
 #[test]
@@ -42,7 +42,13 @@ fn a_worker_stopped_inside_a_file_resumes_and_gives_the_same_output() {
             Instant::now() < deadline,
             "no message inside a file was seen"
         );
-        assert!(worker.try_wait().unwrap().is_none(), "the worker ended");
+        if !worker.is_running() {
+            let output = worker.output();
+            panic!(
+                "the worker ended before a message inside a file was seen: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
         if cluster
             .last_published(&big)
             .is_some_and(|end| end.record_offset > 0 && end.record_offset < BIG_FILE_RECORDS)
@@ -53,10 +59,7 @@ fn a_worker_stopped_inside_a_file_resumes_and_gives_the_same_output() {
     }
     kill(&mut worker);
     std::thread::sleep(Duration::from_secs(1));
-    assert!(
-        run.try_wait().unwrap().is_none(),
-        "the run ended without the worker"
-    );
+    assert!(run.is_running(), "the run ended without the worker");
     let worker = cluster.spawn_worker(0);
     finish(worker);
     let output = finish(run);
@@ -71,7 +74,7 @@ fn a_worker_id_outside_the_plan_is_an_error() {
     let plan = cluster.distributed_plan("unknown-worker", 2, BROKER);
     let mut run = cluster.spawn_run(&plan);
 
-    let output = cluster.spawn_worker(2).wait_with_output().unwrap();
+    let output = cluster.spawn_worker(2).output();
 
     kill(&mut run);
     assert!(!output.status.success());

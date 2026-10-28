@@ -43,7 +43,7 @@ pub const TABLES: [&str; 8] = [
 ];
 
 const FILLER_ACCOUNTS: [&str; 3] = ["444444444444", "555555555555", "666666666666"];
-const FILLER_HOURS: i64 = 12;
+const FILLER_HOURS: i64 = 6;
 const FILLER_EVENTS: usize = 2;
 // The big partition has ten times the events of the others, so that max_skew holds the
 // others back while it is read (14.1.2 節).
@@ -247,34 +247,34 @@ impl Cluster {
         ashiato(self.dir.path())
     }
 
-    pub fn spawn_run(&self, plan: &Path) -> Child {
-        self.ashiato()
-            .arg("run")
-            .arg("--plan")
-            .arg(plan)
-            .arg("--emit-signals")
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap()
+    pub fn spawn_run(&self, plan: &Path) -> Process {
+        Process::spawn(
+            self.ashiato()
+                .arg("run")
+                .arg("--plan")
+                .arg(plan)
+                .arg("--emit-signals")
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped()),
+        )
     }
 
-    pub fn spawn_worker(&self, worker_id: u32) -> Child {
-        self.ashiato()
-            .arg("ingest-worker")
-            .arg("--nats")
-            .arg(self.nats.url())
-            .arg("--run")
-            .arg(RUN_ID)
-            .arg("--worker-id")
-            .arg(worker_id.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
-            .spawn()
-            .unwrap()
+    pub fn spawn_worker(&self, worker_id: u32) -> Process {
+        Process::spawn(
+            self.ashiato()
+                .arg("ingest-worker")
+                .arg("--nats")
+                .arg(self.nats.url())
+                .arg("--run")
+                .arg(RUN_ID)
+                .arg("--worker-id")
+                .arg(worker_id.to_string())
+                .stdout(Stdio::null())
+                .stderr(Stdio::piped()),
+        )
     }
 
-    pub fn spawn_workers(&self, workers: u32) -> Vec<Child> {
+    pub fn spawn_workers(&self, workers: u32) -> Vec<Process> {
         (0..workers)
             .map(|worker_id| self.spawn_worker(worker_id))
             .collect()
@@ -302,12 +302,12 @@ impl Cluster {
         })
     }
 
-    pub fn wait_until_published(&self, fraction: f64, run: &mut Child) {
+    pub fn wait_until_published(&self, fraction: f64, run: &mut Process) {
         let target = (self.files as f64 * fraction).ceil() as u64;
         let deadline = Instant::now() + PROCESS_TIMEOUT;
         while self.published() < target {
             assert!(
-                run.try_wait().unwrap().is_none(),
+                run.is_running(),
                 "the run ended before {target} messages were published"
             );
             assert!(Instant::now() < deadline, "the run did not reach {target}");
@@ -360,8 +360,37 @@ pub fn ashiato(dir: &Path) -> Command {
     command
 }
 
-pub fn finish(child: Child) -> Output {
-    let output = child.wait_with_output().unwrap();
+// Kills the process if the test ends before it, so that a failed test leaves no process
+// behind to wait for servers that are gone.
+pub struct Process(Option<Child>);
+
+impl Process {
+    fn spawn(command: &mut Command) -> Self {
+        Self(Some(command.spawn().unwrap()))
+    }
+
+    pub fn is_running(&mut self) -> bool {
+        self.0
+            .as_mut()
+            .is_some_and(|child| child.try_wait().unwrap().is_none())
+    }
+
+    pub fn output(mut self) -> Output {
+        self.0.take().unwrap().wait_with_output().unwrap()
+    }
+}
+
+impl Drop for Process {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+pub fn finish(process: Process) -> Output {
+    let output = process.output();
     assert!(
         output.status.success(),
         "stderr: {}",
@@ -370,15 +399,18 @@ pub fn finish(child: Child) -> Output {
     output
 }
 
-pub fn finish_all(children: Vec<Child>) {
-    for child in children {
-        finish(child);
+pub fn finish_all(processes: Vec<Process>) {
+    for process in processes {
+        finish(process);
     }
 }
 
-pub fn kill(child: &mut Child) {
-    child.kill().unwrap();
-    child.wait().unwrap();
+// SIGKILL, so that the process stops without any of its own clean up.
+pub fn kill(process: &mut Process) {
+    if let Some(mut child) = process.0.take() {
+        child.kill().unwrap();
+        child.wait().unwrap();
+    }
 }
 
 // Compares the tables in both directions with EXCEPT ALL, so that rows that appear a
