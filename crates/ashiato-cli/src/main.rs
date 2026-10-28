@@ -246,6 +246,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
         until: window.until(),
         rule_sources: selection.rules.rule_sources().to_vec(),
         rulesets: selection.rulesets,
+        context_digest: None,
         data: analysis.data,
     });
     write_output(&run, analysis, scores, args.emit_signals, args.summary)

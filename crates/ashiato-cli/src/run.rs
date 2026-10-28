@@ -85,6 +85,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
             until: window.until(),
             rule_sources: selection.rules.rule_sources().to_vec(),
             rulesets: selection.rulesets,
+            context_digest: None,
             data: analysis.data,
         },
         plan_digest: plan.digest().to_owned(),

@@ -249,8 +249,8 @@ impl AnalyzeCase {
         self.dir.path().join("rules")
     }
 
-    fn analyze(&self, extra_args: &[&str]) -> Vec<serde_json::Value> {
-        let output = ashiato()
+    fn analyze_output(&self, extra_args: &[&str]) -> std::process::Output {
+        ashiato()
             .arg("analyze")
             .arg("--workspace")
             .arg(self.dir.path().join("case"))
@@ -259,7 +259,11 @@ impl AnalyzeCase {
             .arg(self.rules_dir())
             .args(extra_args)
             .output()
-            .unwrap();
+            .unwrap()
+    }
+
+    fn analyze(&self, extra_args: &[&str]) -> Vec<serde_json::Value> {
+        let output = self.analyze_output(extra_args);
         assert!(
             output.status.success(),
             "stderr: {}",
@@ -1225,4 +1229,186 @@ fn rules_test_runs_only_the_fixtures_of_the_given_ruleset() {
         !stdout.contains("console_takeover_mining"),
         "stdout: {stdout}"
     );
+}
+
+const SUPPRESS_CONSOLE_LOGIN_CONTEXT: &str = r#"
+suppress:
+  - origin: "iam_user:*"
+    signals: [test_console_login]
+"#;
+
+const PARAM_CONSOLE_LOGIN_RULE: &str = r#"
+kind: signal
+id: test_console_login
+title: コンソールへのログイン
+severity: low
+tactics: [TA0001]
+params:
+  event_name: ConsoleLogin
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_name = {{ param('event_name') }}
+"#;
+
+const BASELINE_LOGIN_RULE: &str = r#"
+kind: signal
+id: test_baseline_login
+title: ベースライン期間のログイン
+severity: low
+tactics: [TA0001]
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region
+  FROM events
+  WHERE {{ in_baseline_window(event_time) }}
+    AND event_name = 'ConsoleLogin'
+"#;
+
+impl AnalyzeCase {
+    fn write_context(&self, content: &str) -> String {
+        let path = self.dir.path().join("context.yaml");
+        fs::write(&path, content).unwrap();
+        path.to_string_lossy().into_owned()
+    }
+}
+
+fn context_digest(content: &str) -> String {
+    ashiato_core::context::Context::parse(content)
+        .unwrap()
+        .digest()
+        .unwrap()
+        .to_owned()
+}
+
+#[test]
+fn analyze_writes_the_context_digest_only_when_a_context_file_is_given() {
+    let case = AnalyzeCase::new();
+    let context = case.write_context(SUPPRESS_CONSOLE_LOGIN_CONTEXT);
+
+    let without = case.analyze(&[]);
+    let with = case.analyze(&["--context", &context]);
+
+    assert!(without[0].get("context_digest").is_none(), "{}", without[0]);
+    assert_eq!(
+        with[0]["context_digest"],
+        context_digest(SUPPRESS_CONSOLE_LOGIN_CONTEXT),
+        "{}",
+        with[0]
+    );
+}
+
+#[test]
+fn analyze_leaves_out_the_signals_suppressed_by_the_context() {
+    let case = AnalyzeCase::new();
+    let context = case.write_context(SUPPRESS_CONSOLE_LOGIN_CONTEXT);
+
+    let without = case.analyze(&["--emit-signals"]);
+    let with = case.analyze(&["--emit-signals", "--context", &context]);
+
+    assert_eq!(test_records(&without, "signal").len(), 2, "{without:#?}");
+    assert_eq!(test_records(&without, "scenario_match").len(), 1);
+    assert!(test_records(&with, "signal").is_empty(), "{with:#?}");
+    assert!(
+        test_records(&with, "scenario_match").is_empty(),
+        "{with:#?}"
+    );
+}
+
+#[test]
+fn analyze_overrides_the_params_of_the_rules_with_the_context() {
+    let case = AnalyzeCase::new();
+    write_rule(
+        &case.rules_dir(),
+        "test_console_login",
+        PARAM_CONSOLE_LOGIN_RULE,
+    );
+    let context = case.write_context("params:\n  test_console_login.event_name: CreateUser\n");
+
+    let without = case.analyze(&["--emit-signals"]);
+    let with = case.analyze(&["--emit-signals", "--context", &context]);
+
+    assert_eq!(test_records(&without, "signal").len(), 2, "{without:#?}");
+    assert!(test_records(&with, "signal").is_empty(), "{with:#?}");
+}
+
+#[test]
+fn analyze_rejects_a_param_that_the_rule_does_not_declare() {
+    let case = AnalyzeCase::new();
+    let context = case.write_context("params:\n  test_console_login.min_count: 2\n");
+
+    let output = case.analyze_output(&["--context", &context]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("test_console_login.min_count"), "{stderr}");
+}
+
+#[test]
+fn analyze_rejects_a_missing_context_file() {
+    let case = AnalyzeCase::new();
+    let missing = case.dir.path().join("missing.yaml");
+
+    let output = case.analyze_output(&["--context", &missing.to_string_lossy()]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("missing.yaml"), "{stderr}");
+}
+
+#[test]
+fn analyze_takes_the_baseline_period_from_the_lookback_of_the_context() {
+    let case = AnalyzeCase::new();
+    write_rule(
+        &case.rules_dir(),
+        "test_baseline_login",
+        BASELINE_LOGIN_RULE,
+    );
+    write_log(
+        &case.dir.path().join("baseline/log.json.gz"),
+        &[RecordBuilder::new()
+            .set("eventID", "evt-baseline-login")
+            .set("eventTime", "2026-09-21T10:00:00Z")
+            .set("eventSource", "signin.amazonaws.com")
+            .set("eventName", "ConsoleLogin")
+            .build()],
+    );
+    let ingest = ashiato()
+        .arg("ingest")
+        .arg("--workspace")
+        .arg(case.dir.path().join("case"))
+        .arg("--source")
+        .arg(case.dir.path().join("baseline"))
+        .output()
+        .unwrap();
+    assert!(ingest.status.success(), "{ingest:?}");
+    let context = case.write_context("baseline:\n  lookback: 7d\n");
+    let baseline_logins = |lines: &[serde_json::Value]| {
+        of_type(lines, "signal")
+            .into_iter()
+            .filter(|line| line["signal_id"] == "test_baseline_login")
+            .count()
+    };
+
+    let without = case.analyze(&["--emit-signals"]);
+    let with = case.analyze(&["--emit-signals", "--context", &context]);
+
+    assert_eq!(baseline_logins(&without), 1, "{without:#?}");
+    assert_eq!(baseline_logins(&with), 0, "{with:#?}");
 }

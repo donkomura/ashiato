@@ -44,6 +44,7 @@ fn run_record() -> OutputRecord {
             id: "default".to_owned(),
             digest: "sha256:def".to_owned(),
         }],
+        context_digest: None,
         data: DataAvailability {
             events: 12345678,
             s3_data_events: true,
@@ -78,6 +79,18 @@ fn run_record_has_the_shape_of_design_section_11() {
             "data": { "events": 12345678, "s3_data_events": true },
         })
     );
+}
+
+#[test]
+fn run_record_carries_the_context_digest_when_a_context_file_is_given() {
+    let OutputRecord::Run(mut run) = run_record() else {
+        unreachable!("run_record builds a run record")
+    };
+    run.context_digest = Some("sha256:123".to_owned());
+
+    let written = written(OutputRecord::Run(run));
+
+    assert_eq!(written["context_digest"], "sha256:123");
 }
 
 #[test]

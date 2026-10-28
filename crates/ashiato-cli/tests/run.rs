@@ -146,6 +146,12 @@ impl RunCase {
         fs::write(self.plan(), plan).unwrap();
     }
 
+    fn with_context(self, content: &str) -> Self {
+        fs::write(self.dir.path().join("case/context.yaml"), content).unwrap();
+        self.write_plan(&format!("{PLAN}context: ./context.yaml\n"));
+        self
+    }
+
     fn run_output(&self, extra_args: &[&str]) -> Output {
         ashiato()
             .arg("run")
@@ -498,4 +504,100 @@ fn run_does_not_skip_rules_when_s3_data_events_were_streamed() {
         json!({ "events": 3, "s3_data_events": true })
     );
     assert!(skipped_rule_ids(&lines).is_empty(), "{lines:#?}");
+}
+
+const SUPPRESS_CONSOLE_LOGIN_CONTEXT: &str = r#"
+suppress:
+  - origin: "iam_user:*"
+    signals: [test_console_login]
+"#;
+
+const PARAM_CONSOLE_LOGIN_RULE: &str = r#"
+kind: signal
+id: test_console_login
+title: コンソールへのログイン
+severity: low
+tactics: [TA0001]
+params:
+  event_name: ConsoleLogin
+sql: |
+  SELECT
+    event_time           AS start_time,
+    event_time           AS end_time,
+    [event_id]           AS event_ids,
+    access_key_id,
+    principal_key,
+    source_ip,
+    recipient_account_id AS account_id,
+    aws_region           AS region
+  FROM events
+  WHERE {{ in_analysis_window(event_time) }}
+    AND event_name = {{ param('event_name') }}
+"#;
+
+#[test]
+fn run_writes_the_context_digest_only_when_the_plan_has_a_context_file() {
+    let without = RunCase::new().run(&[]);
+    let case = RunCase::new().with_context(SUPPRESS_CONSOLE_LOGIN_CONTEXT);
+
+    let with = case.run(&[]);
+
+    assert!(without[0].get("context_digest").is_none(), "{}", without[0]);
+    let expected = ashiato_core::context::Context::parse(SUPPRESS_CONSOLE_LOGIN_CONTEXT)
+        .unwrap()
+        .digest()
+        .unwrap()
+        .to_owned();
+    assert_eq!(with[0]["context_digest"], expected, "{}", with[0]);
+    assert_eq!(
+        with[0]["plan_digest"],
+        RunPlan::load(&case.plan()).unwrap().digest()
+    );
+}
+
+#[test]
+fn run_leaves_out_the_signals_suppressed_by_the_context() {
+    let case = RunCase::new().with_context(SUPPRESS_CONSOLE_LOGIN_CONTEXT);
+
+    let lines = case.run(&["--emit-signals"]);
+
+    assert!(of_type(&lines, "signal").is_empty(), "{lines:#?}");
+    assert!(of_type(&lines, "scenario_match").is_empty(), "{lines:#?}");
+}
+
+#[test]
+fn run_overrides_the_params_of_the_rules_with_the_context() {
+    let without = RunCase::new();
+    let with =
+        RunCase::new().with_context("params:\n  test_console_login.event_name: CreateUser\n");
+    for case in [&without, &with] {
+        fs::write(
+            case.rules_dir().join("test_console_login/rule.yaml"),
+            PARAM_CONSOLE_LOGIN_RULE,
+        )
+        .unwrap();
+    }
+
+    let without = without.run(&["--emit-signals"]);
+    let with = with.run(&["--emit-signals"]);
+
+    assert_eq!(of_type(&without, "signal").len(), 2, "{without:#?}");
+    assert!(of_type(&with, "signal").is_empty(), "{with:#?}");
+}
+
+#[test]
+fn an_edited_context_file_on_the_same_workspace_is_an_error() {
+    let case = RunCase::new().with_context(SUPPRESS_CONSOLE_LOGIN_CONTEXT);
+    case.run(&[]);
+    fs::write(
+        case.dir.path().join("case/context.yaml"),
+        SUPPRESS_CONSOLE_LOGIN_CONTEXT.replace("iam_user:*", "workload:*"),
+    )
+    .unwrap();
+
+    let output = case.run_output(&[]);
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("digest"), "{stderr}");
 }

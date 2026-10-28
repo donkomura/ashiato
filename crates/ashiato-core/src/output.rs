@@ -30,6 +30,7 @@ pub struct RunRecord {
     pub until: DateTime<Utc>,
     pub rule_sources: Vec<RuleSourceDigest>,
     pub rulesets: Vec<RulesetDigest>,
+    pub context_digest: Option<String>,
     pub data: DataAvailability,
 }
 
