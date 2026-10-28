@@ -183,8 +183,17 @@ async fn stream(
         },
     ));
     let analyzed = analyzer.run(&mut reader).await;
-    drop(reader);
-    let worked = worker.await?;
+    // On a resumed run the worker sends the end of the partitions that had already ended again
+    // (6.4 節), and the analyzer can finish before reading it. Closing the reader only after the
+    // worker keeps that send from failing; a failed analyzer closes it first to stop the worker.
+    let worked = if analyzed.is_ok() {
+        let worked = worker.await?;
+        drop(reader);
+        worked
+    } else {
+        drop(reader);
+        worker.await?
+    };
     // A worker that stops makes its partitions end early, so its error explains the failure
     // better than the analyzer's.
     match (analyzed, worked) {
