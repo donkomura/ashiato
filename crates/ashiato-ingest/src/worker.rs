@@ -84,6 +84,10 @@ pub enum WorkerError {
     },
     #[error("an ingest task stopped unexpectedly")]
     Task(#[source] tokio::task::JoinError),
+    #[error("failed to receive the part of the run from the analyzer")]
+    Control(#[source] TransportError),
+    #[error("the analyzer gave no resume position for partition {0}")]
+    MissingResumePosition(PartitionId),
 }
 
 // The decode threads are taken from the blocking pool of the runtime, and a semaphore with

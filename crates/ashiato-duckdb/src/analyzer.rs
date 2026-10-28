@@ -3,10 +3,10 @@ use std::collections::BTreeSet;
 use ashiato_core::AnalysisWindow;
 use ashiato_core::rule::SignalRule;
 use ashiato_pipeline::{
-    AckTiming, Admission, Delivery, DeliveryHandle, EventTime, IngestedFile, Manifest, PartitionId,
-    PartitionMessage, PartitionProgress, PartitionReader, PartitionWatermark, Position,
-    TransportError, admit, batch_start, file_id, global_watermark, is_batch_complete,
-    readable_partitions, recent_event_expiry,
+    AckTiming, Admission, CommittedPositions, Delivery, DeliveryHandle, EventTime, IngestedFile,
+    Manifest, PartitionId, PartitionMessage, PartitionProgress, PartitionReader,
+    PartitionWatermark, Position, TransportError, admit, batch_start, file_id, global_watermark,
+    is_batch_complete, readable_partitions, recent_event_expiry,
 };
 use chrono::TimeDelta;
 use duckdb::OptionalExt;
@@ -193,6 +193,11 @@ impl Analyzer {
 
     pub fn with_max_skew(self, max_skew: Option<TimeDelta>) -> Self {
         Self { max_skew, ..self }
+    }
+
+    pub fn with_committed_positions(self, shared: CommittedPositions) -> Self {
+        let _ = shared;
+        todo!()
     }
 
     pub fn pending_rows(&self) -> Result<u64, AnalyzerError> {

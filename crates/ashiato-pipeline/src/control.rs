@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+
 use ashiato_core::Duration;
+use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    ManifestEntry, PartitionId, PlacementMode, Position, RunPlan, SourceLocation, assign_partitions,
+    ManifestEntry, PartitionId, PlacementMode, Position, RunPlan, SourceLocation, TransportError,
+    assign_partitions,
 };
 
 #[derive(Debug, thiserror::Error)]
@@ -222,4 +227,46 @@ pub fn resume_response(
 // would also be correct, since the analyzer drops the duplicates by their position (6.4 節).
 pub fn resume_from(committed: Position, last_published: Option<Position>) -> Position {
     last_published.map_or(committed, |published| committed.max(published))
+}
+
+// How an ingest worker learns its part of the run from the analyzer (6.4 節, 7.4 節).
+#[async_trait]
+pub trait ControlClient: Send + Sync {
+    async fn plan(&self, worker_id: u32) -> Result<WorkerPlan, TransportError>;
+    async fn manifest(
+        &self,
+        partition: &PartitionId,
+        from_file_seq: u64,
+    ) -> Result<Vec<ManifestEntry>, TransportError>;
+    async fn resume_positions(
+        &self,
+        partitions: &[PartitionId],
+    ) -> Result<HashMap<PartitionId, Position>, TransportError>;
+    async fn last_published(
+        &self,
+        partition: &PartitionId,
+    ) -> Result<Option<Position>, TransportError>;
+}
+
+// The next positions that the analyzer has committed, in the order of the saved manifest, for
+// the replies to control.resume. Positions accepted but not committed are left out, because a
+// worker resuming from them would skip the messages lost if the analyzer stopped before the
+// commit.
+#[derive(Debug, Clone, Default)]
+pub struct CommittedPositions(Arc<Mutex<Vec<Position>>>);
+
+impl CommittedPositions {
+    pub fn get(&self) -> Vec<Position> {
+        self.0
+            .lock()
+            .expect("no thread panics while holding the positions")
+            .clone()
+    }
+
+    pub fn set(&self, positions: Vec<Position>) {
+        *self
+            .0
+            .lock()
+            .expect("no thread panics while holding the positions") = positions;
+    }
 }

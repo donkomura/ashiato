@@ -11,9 +11,9 @@ mod transport;
 pub use assign::assign_partitions;
 pub use channel::{ChannelReader, ChannelWriter, partition_channels};
 pub use control::{
-    AssignedPartition, ControlError, ManifestPage, ManifestRequest, PartitionPosition,
-    ResumeRequest, ResumeResponse, WorkerPlan, WorkerSource, manifest_page, resume_from,
-    resume_response, validate_distributed,
+    AssignedPartition, CommittedPositions, ControlClient, ControlError, ManifestPage,
+    ManifestRequest, PartitionPosition, ResumeRequest, ResumeResponse, WorkerPlan, WorkerSource,
+    manifest_page, resume_from, resume_response, validate_distributed,
 };
 pub use manifest::{Manifest, ManifestEntry, PartitionManifest};
 pub use message::{EventTime, IngestedFile, PartitionId, PartitionMessage, Position, file_id};
