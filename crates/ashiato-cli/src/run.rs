@@ -9,7 +9,7 @@ use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
 use ashiato_core::rule::{Rule, SignalRule};
 use ashiato_core::scoring::{ScoringSettings, score};
 use ashiato_core::validate::validate_streaming;
-use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
+use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerMetrics, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
     DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment, S3Location,
     S3Source, WorkerSettings, list_local, run_workers, trail_root,
@@ -73,7 +73,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
                 .all(|skipped| skipped.rule_id != rule.id)
         })
         .collect();
-    let store = runtime.block_on(stream(
+    let (store, metrics) = runtime.block_on(stream(
         &plan,
         store,
         manifest,
@@ -117,7 +117,21 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         file_errors: counts.file_errors,
         late_events: counts.late_events,
     });
-    write_output(&run, analysis, scores, args.emit_signals, args.summary)
+    write_output(&run, analysis, scores, args.emit_signals, args.summary)?;
+    report_metrics(metrics);
+    Ok(())
+}
+
+// The metrics go to stderr so that stdout holds only the results of the analysis (14.1.5 節).
+// Later metrics are added as fields of the same line.
+fn report_metrics(metrics: AnalyzerMetrics) {
+    eprintln!(
+        "{}",
+        serde_json::json!({
+            "metrics": "run",
+            "pending_max_rows": metrics.pending_max_rows,
+        })
+    );
 }
 
 // Settings for later stages of the implementation are rejected rather than ignored, so that a
@@ -198,7 +212,7 @@ async fn stream(
     manifest: Manifest,
     signal_rules: Vec<SignalRule>,
     source: Arc<dyn FileSource>,
-) -> anyhow::Result<PipelineStore> {
+) -> anyhow::Result<(PipelineStore, AnalyzerMetrics)> {
     let window = plan.analysis_window();
     let allowed_lateness = plan.pipeline.allowed_lateness.to_time_delta();
     let settings = AnalyzerSettings {
@@ -273,7 +287,10 @@ async fn stream(
     match (analyzed, worked) {
         (Err(AnalyzerError::Closed(_)), Err(error)) | (Ok(()), Err(error)) => Err(error.into()),
         (Err(error), _) => Err(error.into()),
-        (Ok(()), Ok(())) => Ok(analyzer.into_store()),
+        (Ok(()), Ok(())) => {
+            let metrics = analyzer.metrics();
+            Ok((analyzer.into_store(), metrics))
+        }
     }
 }
 

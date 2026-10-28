@@ -105,6 +105,8 @@ pub struct Analyzer {
     uncommitted_messages: usize,
     queries: Option<BatchQueries>,
     max_skew: Option<TimeDelta>,
+    pending_rows: u64,
+    metrics: AnalyzerMetrics,
 }
 
 impl Analyzer {
@@ -113,6 +115,10 @@ impl Analyzer {
         manifest: Manifest,
         settings: AnalyzerSettings,
     ) -> Result<Self, AnalyzerError> {
+        let pending_rows =
+            store
+                .connection
+                .query_row("SELECT count(*) FROM pending", [], |row| row.get(0))?;
         let mut partitions = Vec::with_capacity(manifest.partitions.len());
         for (index, partition) in manifest.partitions.into_iter().enumerate() {
             let saved = store
@@ -160,6 +166,10 @@ impl Analyzer {
             uncommitted_messages: 0,
             queries: None,
             max_skew: None,
+            pending_rows,
+            metrics: AnalyzerMetrics {
+                pending_max_rows: pending_rows,
+            },
         })
     }
 
@@ -186,7 +196,7 @@ impl Analyzer {
     }
 
     pub fn metrics(&self) -> AnalyzerMetrics {
-        todo!()
+        self.metrics
     }
 
     pub fn resume_positions(&self) -> Vec<Position> {
@@ -347,6 +357,7 @@ impl Analyzer {
     // that a restart neither counts a message twice nor misses one.
     pub fn commit(&mut self) -> Result<Vec<DeliveryHandle>, AnalyzerError> {
         let transaction = self.store.connection.transaction()?;
+        let mut added_rows = 0;
         for received in self.received.drain(..) {
             match received {
                 Received::Events {
@@ -380,7 +391,8 @@ impl Analyzer {
                                                     ORDER BY record_index) = 1",
                         duckdb::params![timestamp(watermark), partition_index],
                     )?;
-                    transaction.execute("INSERT INTO pending SELECT * FROM accepted", [])?;
+                    added_rows +=
+                        transaction.execute("INSERT INTO pending SELECT * FROM accepted", [])?;
                     transaction.execute(
                         "INSERT INTO recent_event_ids \
                          SELECT ?, event_id, event_time FROM accepted",
@@ -439,6 +451,8 @@ impl Analyzer {
             )?;
         }
         transaction.commit()?;
+        self.pending_rows += added_rows as u64;
+        self.metrics.pending_max_rows = self.metrics.pending_max_rows.max(self.pending_rows);
         for index in std::mem::take(&mut self.changed) {
             let partition = &mut self.partitions[index];
             partition.progress.committed = partition.progress.next;
@@ -476,7 +490,7 @@ impl Analyzer {
             if let Some(queries) = &self.queries {
                 queries.run(&transaction, start, end)?;
             }
-            transaction.execute(
+            let removed_rows = transaction.execute(
                 "DELETE FROM pending WHERE event_time >= ? AND event_time < ?",
                 [timestamp(start), timestamp(end)],
             )?;
@@ -485,6 +499,7 @@ impl Analyzer {
                 [timestamp(start), timestamp(end)],
             )?;
             transaction.commit()?;
+            self.pending_rows -= removed_rows as u64;
             finalized.push((start, end));
         }
         Ok(finalized)
