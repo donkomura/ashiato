@@ -20,7 +20,7 @@ docker pull nats:2.10.29
 
 ```sh
 cargo test -p ashiato-nats -- --ignored
-cargo test -p ashiato-cli --test distributed -- --ignored
+cargo test -p ashiato-cli --test distributed --test distributed_failures -- --ignored
 ```
 
 `ashiato-cli` のテストは、`ashiato run` と `ashiato ingest-worker` を別々のプロセスとして起動し、ソースには MinIO を使う。MinIO のイメージの取得は `docs/s3-testing.md` に書いた。
@@ -55,3 +55,10 @@ docker rm --force $(docker ps --quiet --filter label=ashiato-test=nats)
   - 分散の配置の出力とワークスペースの表が、1 プロセスの配置と一致し、終了時にストリームが消えている（`streaming-pipeline.md` の 14.1.3 節の 1〜3）。
   - 取り込みワーカーをファイルの途中で止めて再起動しても、出力と表が一致する。
   - 範囲外のワーカー ID で起動した取り込みワーカーは、エラーで止まる。
+- `crates/ashiato-cli/tests/distributed_failures.rs`（`streaming-pipeline.md` の 14.1.3 節の F1〜F4 を小さなフィクスチャで起こす）
+  - 4 つのワーカーのうち 1 つを止めて再起動しても、出力と表が 1 プロセスの配置と一致する（F1）。
+  - NATS サーバーを途中で再起動しても一致する（F2）。
+  - 分析コンシューマーを止めて、同じ実行の定義で再起動しても一致する（F3）。
+  - 1 つのワーカーだけを遅れて起動しても一致する（F4）。
+  - 障害を起こす時点は、ストリームに入ったメッセージの数（ストリームの最後のシーケンス番号）がログファイルの数の 30%、50%、70% に達したかで決める。パーティションごとに保持できるメッセージを少なくして、取り込みワーカーが分析コンシューマーを待つようにし、障害を起こす時点で実行が続いているようにしている。
+  - 他より 10 倍のイベントを持つパーティションを含め、`max_skew` による流量の制御が働くようにしている。
