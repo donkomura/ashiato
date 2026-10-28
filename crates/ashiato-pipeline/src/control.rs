@@ -1,7 +1,9 @@
 use ashiato_core::Duration;
 use serde::{Deserialize, Serialize};
 
-use crate::{ManifestEntry, PartitionId, Position, RunPlan};
+use crate::{
+    ManifestEntry, PartitionId, PlacementMode, Position, RunPlan, SourceLocation, assign_partitions,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ControlError {
@@ -90,36 +92,134 @@ fn serialize_display<S: serde::Serializer>(
     serializer.collect_str(value)
 }
 
+// Checked when the run starts, so that a plan the workers cannot follow fails before the
+// workspace is made.
 pub fn validate_distributed(plan: &RunPlan) -> Result<(), ControlError> {
-    todo!("{plan:?}")
+    if plan.placement.mode != PlacementMode::Distributed {
+        return Ok(());
+    }
+    if matches!(plan.source.location, SourceLocation::Local { .. }) {
+        return Err(ControlError::LocalSourceInDistributed);
+    }
+    if plan.placement.nats_url.is_none() {
+        return Err(ControlError::MissingNatsUrl);
+    }
+    Ok(())
 }
 
 impl WorkerPlan {
+    // partitions are in the order of the saved manifest. Worker ids start at 0 and index the
+    // assignment of assign_partitions.
     pub fn new(
         plan: &RunPlan,
         partitions: &[PartitionId],
         worker_id: u32,
     ) -> Result<Self, ControlError> {
-        todo!("{plan:?} {partitions:?} {worker_id}")
+        if plan.placement.mode != PlacementMode::Distributed {
+            return Err(ControlError::NotDistributed);
+        }
+        let SourceLocation::S3 { uri, endpoint_url } = &plan.source.location else {
+            return Err(ControlError::LocalSourceInDistributed);
+        };
+        let workers = plan.placement.ingest_workers;
+        let unknown = || ControlError::UnknownWorker {
+            worker_id,
+            workers: workers.get(),
+        };
+        let slot = usize::try_from(worker_id).map_err(|_| unknown())?;
+        let assigned = assign_partitions(partitions, workers)
+            .into_iter()
+            .nth(slot)
+            .ok_or_else(unknown)?;
+        Ok(Self {
+            run_id: plan.run_id.clone(),
+            worker_id,
+            source: WorkerSource {
+                uri: uri.clone(),
+                endpoint_url: endpoint_url.clone(),
+            },
+            allowed_lateness: plan.pipeline.allowed_lateness,
+            max_message_size: plan.broker.max_message_size,
+            partitions: assigned
+                .into_iter()
+                .map(|index| AssignedPartition {
+                    index: u32::try_from(index)
+                        .expect("the manifest holds fewer than 2^32 partitions"),
+                    partition: partitions[index].clone(),
+                })
+                .collect(),
+        })
     }
 }
 
+// Takes as many entries from from_file_seq on as fit in a reply of limit bytes, so that a list
+// larger than the max_payload of NATS is returned over several requests (7.4 節).
 pub fn manifest_page(
     files: &[ManifestEntry],
     from_file_seq: u64,
     limit: usize,
 ) -> Result<ManifestPage, ControlError> {
-    todo!("{files:?} {from_file_seq} {limit}")
+    // The size of the reply is counted as the empty reply plus the entries and their commas,
+    // which is exact for compact JSON. The empty reply is measured with the longest
+    // next_file_seq, so that the reply fits whichever value it ends up with.
+    let envelope = serde_json::to_vec(&ManifestPage {
+        files: Vec::new(),
+        next_file_seq: Some(u64::MAX),
+    })?
+    .len();
+    let remaining = files.iter().filter(|entry| entry.file_seq >= from_file_seq);
+    let mut page = Vec::new();
+    let mut size = envelope;
+    for entry in remaining {
+        let entry_size = serde_json::to_vec(entry)?.len() + usize::from(!page.is_empty());
+        if size + entry_size > limit {
+            if page.is_empty() {
+                return Err(ControlError::EntryTooLarge {
+                    file_seq: entry.file_seq,
+                    size: entry_size,
+                    limit,
+                });
+            }
+            return Ok(ManifestPage {
+                files: page,
+                next_file_seq: Some(entry.file_seq),
+            });
+        }
+        size += entry_size;
+        page.push(entry.clone());
+    }
+    Ok(ManifestPage {
+        files: page,
+        next_file_seq: None,
+    })
 }
 
+// partitions and committed are in the order of the saved manifest.
 pub fn resume_response(
     request: &ResumeRequest,
     partitions: &[PartitionId],
     committed: &[Position],
 ) -> Result<ResumeResponse, ControlError> {
-    todo!("{request:?} {partitions:?} {committed:?}")
+    let positions = request
+        .partitions
+        .iter()
+        .map(|partition| {
+            let index = partitions
+                .iter()
+                .position(|candidate| candidate == partition)
+                .ok_or_else(|| ControlError::UnknownPartition(partition.clone()))?;
+            Ok(PartitionPosition {
+                partition: partition.clone(),
+                position: committed[index],
+            })
+        })
+        .collect::<Result<_, ControlError>>()?;
+    Ok(ResumeResponse { positions })
 }
 
+// last_published is the end of the last message of the partition left in the stream. Starting
+// from it saves sending again what the analyzer has yet to read; starting from committed alone
+// would also be correct, since the analyzer drops the duplicates by their position (6.4 節).
 pub fn resume_from(committed: Position, last_published: Option<Position>) -> Position {
-    todo!("{committed:?} {last_published:?}")
+    last_published.map_or(committed, |published| committed.max(published))
 }

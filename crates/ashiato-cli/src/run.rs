@@ -16,7 +16,7 @@ use ashiato_ingest::{
 };
 use ashiato_pipeline::{
     Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation, assign_partitions,
-    partition_channels,
+    partition_channels, validate_distributed,
 };
 
 use crate::{DATABASE_FILE, load_catalog_from, report_warning, write_output};
@@ -137,6 +137,7 @@ fn report_metrics(metrics: AnalyzerMetrics) {
 // Settings for later stages of the implementation are rejected rather than ignored, so that a
 // run never silently differs from its plan.
 fn reject_unsupported(plan: &RunPlan) -> anyhow::Result<()> {
+    validate_distributed(plan)?;
     if plan.placement.mode == PlacementMode::Distributed {
         bail!("placement.mode: distributed is not supported yet; use single_process");
     }
