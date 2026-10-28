@@ -159,6 +159,15 @@ impl Analyzer {
         }
     }
 
+    pub fn with_max_skew(self, max_skew: Option<TimeDelta>) -> Self {
+        let _ = max_skew;
+        todo!()
+    }
+
+    pub fn pending_rows(&self) -> Result<u64, AnalyzerError> {
+        todo!()
+    }
+
     pub fn into_store(self) -> PipelineStore {
         self.store
     }

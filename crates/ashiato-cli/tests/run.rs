@@ -482,6 +482,35 @@ fn the_number_of_ingest_workers_does_not_change_the_output() {
     }
 }
 
+#[test]
+fn max_skew_does_not_change_the_output_except_for_the_plan_digest() {
+    let case = RunCase::new();
+    let output = |plan: &str| {
+        let database = case.dir.path().join("case/ashiato.duckdb");
+        if database.exists() {
+            fs::remove_file(&database).unwrap();
+        }
+        case.write_plan(plan);
+        let mut lines = case.run(&["--emit-signals"]);
+        assert_eq!(lines[0]["type"], "run");
+        lines[0]
+            .as_object_mut()
+            .unwrap()
+            .remove("plan_digest")
+            .unwrap();
+        lines
+    };
+
+    let without = output(PLAN);
+    let with = output(&PLAN.replace(
+        "allowed_lateness: 30m",
+        "allowed_lateness: 30m\n  max_skew: 30m",
+    ));
+
+    assert!(!of_type(&without, "signal").is_empty());
+    assert_eq!(with, without);
+}
+
 fn skipped_rule_ids(lines: &[Value]) -> Vec<&str> {
     of_type(lines, "rule_skipped")
         .into_iter()

@@ -43,6 +43,14 @@ pub trait PartitionReader: Send {
         partition: &PartitionId,
         max: usize,
     ) -> Result<Vec<Delivery>, TransportError>;
+    // Fetches from the first of the partitions, in the given order, that has a message ready, or
+    // waits until one of them has. Returns the index of that partition among the given ones. An
+    // empty list of deliveries means that the partition is closed and drained.
+    async fn fetch_ready(
+        &mut self,
+        partitions: &[PartitionId],
+        max: usize,
+    ) -> Result<(usize, Vec<Delivery>), TransportError>;
     async fn ack(&self, deliveries: &[DeliveryHandle]) -> Result<(), TransportError>;
     async fn reset(&mut self, partition: &PartitionId) -> Result<(), TransportError>;
 }

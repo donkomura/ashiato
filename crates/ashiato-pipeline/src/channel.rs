@@ -94,6 +94,15 @@ impl PartitionReader for ChannelReader {
             .collect())
     }
 
+    async fn fetch_ready(
+        &mut self,
+        partitions: &[PartitionId],
+        max: usize,
+    ) -> Result<(usize, Vec<Delivery>), TransportError> {
+        let _ = (partitions, max);
+        todo!()
+    }
+
     // A channel hands each message out once and keeps no copy, so there is nothing to acknowledge.
     async fn ack(&self, _deliveries: &[DeliveryHandle]) -> Result<(), TransportError> {
         Ok(())

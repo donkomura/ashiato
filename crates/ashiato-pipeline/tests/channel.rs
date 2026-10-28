@@ -161,3 +161,102 @@ async fn a_single_process_cannot_redeliver_messages() {
         Err(TransportError::RedeliveryUnsupported(unsupported)) if unsupported == east
     ));
 }
+
+fn positions(deliveries: &[ashiato_pipeline::Delivery]) -> Vec<Position> {
+    deliveries
+        .iter()
+        .map(|delivery| delivery.message.position())
+        .collect()
+}
+
+#[tokio::test]
+async fn fetch_ready_takes_the_first_of_the_given_partitions_that_has_a_message() {
+    let east = partition("us-east-1");
+    let west = partition("us-west-2");
+    let north = partition("eu-north-1");
+    let (writer, mut reader) = partition_channels([east.clone(), west.clone(), north.clone()], 8);
+    writer.put(end(&west, 0)).await.unwrap();
+    writer.put(end(&west, 1)).await.unwrap();
+    writer.put(end(&north, 5)).await.unwrap();
+
+    let (index, deliveries) = reader
+        .fetch_ready(&[east.clone(), north.clone(), west.clone()], 8)
+        .await
+        .unwrap();
+    assert_eq!(index, 1);
+    assert_eq!(positions(&deliveries), vec![Position::new(5, 0)]);
+
+    let (index, deliveries) = reader
+        .fetch_ready(&[east.clone(), north.clone(), west.clone()], 1)
+        .await
+        .unwrap();
+    assert_eq!(index, 2);
+    assert_eq!(positions(&deliveries), vec![Position::new(0, 0)]);
+}
+
+#[tokio::test]
+async fn fetch_ready_waits_for_any_of_the_given_partitions_but_not_the_others() {
+    let east = partition("us-east-1");
+    let west = partition("us-west-2");
+    let north = partition("eu-north-1");
+    let (writer, mut reader) = partition_channels([east.clone(), west.clone(), north.clone()], 8);
+    writer.put(end(&north, 0)).await.unwrap();
+
+    assert!(
+        timeout(
+            SHORT_WAIT,
+            reader.fetch_ready(&[east.clone(), west.clone()], 8)
+        )
+        .await
+        .is_err(),
+        "a partition that is not given must not be read"
+    );
+    let sender = tokio::spawn({
+        let (writer, west) = (writer.clone(), west.clone());
+        async move { writer.put(end(&west, 3)).await }
+    });
+    let (index, deliveries) = reader
+        .fetch_ready(&[east.clone(), west.clone()], 8)
+        .await
+        .unwrap();
+
+    assert_eq!(index, 1);
+    assert_eq!(positions(&deliveries), vec![Position::new(3, 0)]);
+    sender.await.unwrap().unwrap();
+    assert_eq!(
+        positions(&reader.fetch(&north, 8).await.unwrap()),
+        vec![Position::new(0, 0)]
+    );
+}
+
+#[tokio::test]
+async fn fetch_ready_reports_a_drained_partition_once_all_writers_are_gone() {
+    let east = partition("us-east-1");
+    let west = partition("us-west-2");
+    let (writer, mut reader) = partition_channels([east.clone(), west.clone()], 8);
+    writer.put(end(&west, 0)).await.unwrap();
+    drop(writer);
+
+    let (index, deliveries) = reader
+        .fetch_ready(&[west.clone(), east.clone()], 8)
+        .await
+        .unwrap();
+    assert_eq!((index, deliveries.len()), (0, 1));
+    let (_, deliveries) = reader
+        .fetch_ready(&[west.clone(), east.clone()], 8)
+        .await
+        .unwrap();
+    assert!(deliveries.is_empty());
+}
+
+#[tokio::test]
+async fn fetch_ready_with_an_unknown_partition_is_an_error() {
+    let east = partition("us-east-1");
+    let west = partition("us-west-2");
+    let (_writer, mut reader) = partition_channels([east.clone()], 8);
+
+    assert!(matches!(
+        reader.fetch_ready(&[east, west.clone()], 8).await,
+        Err(TransportError::UnknownPartition(unknown)) if unknown == west
+    ));
+}

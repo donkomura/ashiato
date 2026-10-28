@@ -113,6 +113,9 @@ async fn finalize_step_by_step(
 ) -> Vec<Vec<(EventTime, EventTime)>> {
     let mut analyzer = open(database, manifest, settings());
     let (mut reader, worker) = start_worker(manifest, &analyzer.resume_positions());
+    // Every message fits in the channels, so waiting for the worker leaves every partition
+    // ready, and the analyzer reads them in the order of their watermarks.
+    worker.await.unwrap().unwrap();
     let mut finalized = Vec::new();
     while !analyzer.all_partitions_ended() {
         analyzer.receive(&mut reader).await.unwrap();
@@ -120,8 +123,6 @@ async fn finalize_step_by_step(
         reader.ack(&handles).await.unwrap();
         finalized.push(analyzer.finalize_batches().unwrap());
     }
-    drop(analyzer);
-    worker.await.unwrap().unwrap();
     finalized
 }
 
@@ -162,6 +163,8 @@ async fn a_partition_without_files_does_not_hold_back_the_global_watermark() {
     let database = workspace.database("run");
     let mut analyzer = open(&database, &manifest, settings());
     let (mut reader, worker) = start_worker(&manifest, &analyzer.resume_positions());
+    // As in finalize_step_by_step, the partitions are read in the order of their watermarks.
+    worker.await.unwrap().unwrap();
 
     let mut finalized_before_the_end = Vec::new();
     while !analyzer.all_partitions_ended() {
@@ -172,8 +175,6 @@ async fn a_partition_without_files_does_not_hold_back_the_global_watermark() {
             finalized_before_the_end.extend(batches);
         }
     }
-    drop(analyzer);
-    worker.await.unwrap().unwrap();
 
     assert_eq!(
         finalized_before_the_end,
