@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -17,10 +18,14 @@ use crate::normalize::{
 // Leaves room in each message for the headers that describe the chunk (5.3 節).
 const HEADER_ALLOWANCE_BYTES: usize = 4096;
 
+pub const DEFAULT_PREFETCH_FILES: NonZeroUsize = NonZeroUsize::new(16).unwrap();
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct WorkerSettings {
     pub allowed_lateness: TimeDelta,
     pub max_message_size: usize,
+    pub decode_threads: NonZeroUsize,
+    pub prefetch_files: NonZeroUsize,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

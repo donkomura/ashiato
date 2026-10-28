@@ -1,9 +1,13 @@
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 
 use arrow_array::RecordBatch;
 use ashiato_duckdb::EventStore;
-use ashiato_ingest::{FileSource, LocalSource, PartitionAssignment, WorkerSettings, run_worker};
+use ashiato_ingest::{
+    DEFAULT_PREFETCH_FILES, FileSource, LocalSource, PartitionAssignment, WorkerSettings,
+    run_worker,
+};
 use ashiato_pipeline::{
     EVENT_COLUMNS, ManifestEntry, PartitionId, PartitionManifest, PartitionMessage,
     PartitionReader, Position, partition_channels,
@@ -162,6 +166,8 @@ async fn worker_batches(path: &std::path::Path) -> Vec<RecordBatch> {
         WorkerSettings {
             allowed_lateness: TimeDelta::minutes(30),
             max_message_size: 1 << 20,
+            decode_threads: NonZeroUsize::MIN,
+            prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     )
     .await

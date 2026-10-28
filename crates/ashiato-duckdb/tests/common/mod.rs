@@ -1,12 +1,13 @@
 #![allow(dead_code)]
 
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use ashiato_duckdb::{Analyzer, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
-    FileSource, ListScope, LocalSource, PartitionAssignment, WorkerError, WorkerSettings,
-    list_local, run_worker,
+    DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment, WorkerError,
+    WorkerSettings, list_local, run_worker,
 };
 use ashiato_pipeline::{ChannelReader, EventTime, Manifest, Position, partition_channels};
 use ashiato_testkit::log_file::{LogFile, write_log_file};
@@ -121,6 +122,8 @@ pub fn start_worker(
         WorkerSettings {
             allowed_lateness: TimeDelta::minutes(LATENESS_MINUTES),
             max_message_size: 1 << 20,
+            decode_threads: NonZeroUsize::new(2).unwrap(),
+            prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     ));
     (reader, worker)

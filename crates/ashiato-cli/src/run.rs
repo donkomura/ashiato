@@ -1,3 +1,4 @@
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -10,7 +11,8 @@ use ashiato_core::scoring::{ScoringSettings, score};
 use ashiato_core::validate::validate_streaming;
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
-    FileSource, ListScope, LocalSource, PartitionAssignment, WorkerSettings, list_local, run_worker,
+    DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment,
+    WorkerSettings, list_local, run_worker,
 };
 use ashiato_pipeline::{
     Manifest, PlacementMode, RuleOrigin, RunPlan, SourceLocation, partition_channels,
@@ -191,6 +193,8 @@ async fn stream(
         WorkerSettings {
             allowed_lateness,
             max_message_size: usize::try_from(plan.broker.max_message_size)?,
+            decode_threads: NonZeroUsize::MIN,
+            prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     ));
     let analyzed = analyzer.run(&mut reader).await;

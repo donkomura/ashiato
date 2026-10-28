@@ -25,4 +25,4 @@ ashiato-duckdb = { version = "0.1.0", path = "../ashiato-duckdb" }
 ashiato-testkit = { version = "0.1.0", path = "../ashiato-testkit" }
 duckdb = { version = "1.20000.0", features = ["appender-arrow"] }
 tempfile = "3.27.0"
-tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "time"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "sync", "time"] }

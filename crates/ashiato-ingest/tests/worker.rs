@@ -1,30 +1,46 @@
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use arrow_array::cast::AsArray;
 use arrow_array::types::Int64Type;
 use ashiato_ingest::{
-    FileSource, LocalSource, PartitionAssignment, WorkerError, WorkerSettings, run_worker,
+    DEFAULT_PREFETCH_FILES, FileSource, LocalSource, PartitionAssignment, SourceError, WorkerError,
+    WorkerSettings, run_worker,
 };
 use ashiato_pipeline::{
-    ManifestEntry, PartitionId, PartitionManifest, PartitionMessage, PartitionReader, Position,
-    file_id, partition_channels,
+    ChannelWriter, ManifestEntry, PartitionId, PartitionManifest, PartitionMessage,
+    PartitionReader, PartitionWriter, Position, TransportError, file_id, partition_channels,
 };
 use ashiato_testkit::record::RecordBuilder;
+use async_trait::async_trait;
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use tempfile::TempDir;
+use tokio::sync::{Semaphore, mpsc};
 
 const LATENESS_MINUTES: i64 = 30;
+const PATIENCE: Duration = Duration::from_secs(10);
 
 fn settings(max_message_size: usize) -> WorkerSettings {
     WorkerSettings {
         allowed_lateness: TimeDelta::minutes(LATENESS_MINUTES),
         max_message_size,
+        decode_threads: NonZeroUsize::new(2).unwrap(),
+        prefetch_files: DEFAULT_PREFETCH_FILES,
+    }
+}
+
+fn parallel_settings(decode_threads: usize, prefetch_files: usize) -> WorkerSettings {
+    WorkerSettings {
+        decode_threads: NonZeroUsize::new(decode_threads).unwrap(),
+        prefetch_files: NonZeroUsize::new(prefetch_files).unwrap(),
+        ..settings(1 << 20)
     }
 }
 
@@ -107,17 +123,29 @@ async fn ingest(
     assignments: Vec<PartitionAssignment>,
     settings: WorkerSettings,
 ) -> Result<Vec<PartitionMessage>, WorkerError> {
+    ingest_from(
+        assignments,
+        Arc::new(LocalSource),
+        4,
+        |writer| Arc::new(writer),
+        settings,
+    )
+    .await
+}
+
+async fn ingest_from(
+    assignments: Vec<PartitionAssignment>,
+    source: Arc<dyn FileSource>,
+    capacity: usize,
+    writer: impl FnOnce(ChannelWriter) -> Arc<dyn PartitionWriter>,
+    settings: WorkerSettings,
+) -> Result<Vec<PartitionMessage>, WorkerError> {
     let partitions: Vec<PartitionId> = assignments
         .iter()
         .map(|assignment| assignment.manifest.partition.clone())
         .collect();
-    let (writer, mut reader) = partition_channels(partitions.clone(), 4);
-    let worker = tokio::spawn(run_worker(
-        assignments,
-        Arc::new(LocalSource) as Arc<dyn FileSource>,
-        Arc::new(writer),
-        settings,
-    ));
+    let (channel, mut reader) = partition_channels(partitions.clone(), capacity);
+    let worker = tokio::spawn(run_worker(assignments, source, writer(channel), settings));
     let mut messages = Vec::new();
     for partition in &partitions {
         loop {
@@ -429,4 +457,198 @@ async fn a_partition_waiting_for_its_reader_does_not_hold_back_the_others() {
         west_messages.extend(deliveries.into_iter().map(|delivery| delivery.message));
     }
     assert_eq!(west_messages.len(), 5);
+}
+
+// Holds the read of each file until the test opens its gate, and reports the files whose read
+// has finished, so that a test decides the order in which the reads finish.
+struct GatedSource {
+    gates: Vec<Semaphore>,
+    finished: mpsc::UnboundedSender<u64>,
+}
+
+impl GatedSource {
+    fn new(file_count: usize) -> (Arc<Self>, mpsc::UnboundedReceiver<u64>) {
+        let (finished, receiver) = mpsc::unbounded_channel();
+        let gates = (0..file_count).map(|_| Semaphore::new(0)).collect();
+        (Arc::new(Self { gates, finished }), receiver)
+    }
+
+    fn open(&self, file_seq: u64) {
+        self.gates[usize::try_from(file_seq).unwrap()].add_permits(1);
+    }
+}
+
+#[async_trait]
+impl FileSource for GatedSource {
+    async fn read(&self, entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
+        self.gates[usize::try_from(entry.file_seq).unwrap()]
+            .acquire()
+            .await
+            .unwrap()
+            .forget();
+        let content = LocalSource.read(entry).await;
+        self.finished.send(entry.file_seq).unwrap();
+        content
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn files_whose_reads_finish_in_reverse_order_are_sent_in_the_order_of_the_files() {
+    let east = partition("us-east-1");
+    let mut files = Files::new();
+    for index in 0..4 {
+        files.add_records(&format!("{index}.json.gz"), records(index + 1));
+    }
+    let (source, mut finished) = GatedSource::new(4);
+
+    let opener = {
+        let source = Arc::clone(&source);
+        tokio::spawn(async move {
+            let mut order = Vec::new();
+            for file_seq in (0..4).rev() {
+                source.open(file_seq);
+                let done = tokio::time::timeout(PATIENCE, finished.recv())
+                    .await
+                    .expect("the worker must read the later files before the earlier ones end")
+                    .unwrap();
+                order.push(done);
+            }
+            order
+        })
+    };
+    let messages = tokio::time::timeout(
+        PATIENCE,
+        ingest_from(
+            vec![files.assignment(0, &east, Position::START)],
+            source,
+            4,
+            |writer| Arc::new(writer),
+            parallel_settings(4, 4),
+        ),
+    )
+    .await
+    .expect("the worker must finish")
+    .unwrap();
+
+    assert_eq!(opener.await.unwrap(), vec![3, 2, 1, 0]);
+    let positions: Vec<Position> = messages.iter().map(PartitionMessage::position).collect();
+    assert_eq!(
+        positions,
+        vec![
+            Position::new(0, 0),
+            Position::new(1, 0),
+            Position::new(2, 0),
+            Position::new(3, 0),
+            Position::new(4, 0),
+        ]
+    );
+    let counts: Vec<usize> = messages
+        .iter()
+        .map(|message| event_ids(message).len())
+        .collect();
+    assert_eq!(counts, vec![1, 2, 3, 4, 0]);
+}
+
+// Records the files whose messages have been sent, so that a source can check what was sent
+// before each read starts.
+struct RecordingWriter {
+    inner: ChannelWriter,
+    sent: Arc<Mutex<Vec<u64>>>,
+}
+
+#[async_trait]
+impl PartitionWriter for RecordingWriter {
+    async fn put(&self, message: PartitionMessage) -> Result<(), TransportError> {
+        let file_seq = message.position().file_seq;
+        self.inner.put(message).await?;
+        self.sent.lock().unwrap().push(file_seq);
+        Ok(())
+    }
+}
+
+struct PrefetchCheckingSource {
+    prefetch: u64,
+    sent: Arc<Mutex<Vec<u64>>>,
+    early_reads: Mutex<Vec<u64>>,
+}
+
+#[async_trait]
+impl FileSource for PrefetchCheckingSource {
+    async fn read(&self, entry: &ManifestEntry) -> Result<Vec<u8>, SourceError> {
+        if let Some(released) = entry.file_seq.checked_sub(self.prefetch)
+            && !self.sent.lock().unwrap().contains(&released)
+        {
+            self.early_reads.lock().unwrap().push(entry.file_seq);
+        }
+        LocalSource.read(entry).await
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_file_is_read_only_after_the_file_that_many_files_before_it_has_been_sent() {
+    let east = partition("us-east-1");
+    let mut files = Files::new();
+    for index in 0..12 {
+        files.add_records(&format!("{index:02}.json.gz"), records(1));
+    }
+    let sent = Arc::new(Mutex::new(Vec::new()));
+    let source = Arc::new(PrefetchCheckingSource {
+        prefetch: 3,
+        sent: Arc::clone(&sent),
+        early_reads: Mutex::new(Vec::new()),
+    });
+
+    let messages = ingest_from(
+        vec![files.assignment(0, &east, Position::START)],
+        Arc::clone(&source) as Arc<dyn FileSource>,
+        1,
+        |inner| Arc::new(RecordingWriter { inner, sent }),
+        parallel_settings(4, 3),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(messages.len(), 13);
+    assert_eq!(*source.early_reads.lock().unwrap(), Vec::<u64>::new());
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn with_one_decode_thread_a_partition_keeps_going_while_the_others_are_not_read() {
+    let stalled = [partition("us-east-1"), partition("us-west-2")];
+    let north = partition("eu-north-1");
+    let mut stalled_files = Files::new();
+    let mut north_files = Files::new();
+    for index in 0..6 {
+        stalled_files.add_records(&format!("stalled-{index}.json.gz"), records(1));
+        north_files.add_records(&format!("north-{index}.json.gz"), records(1));
+    }
+    let (writer, mut reader) =
+        partition_channels([stalled[0].clone(), stalled[1].clone(), north.clone()], 1);
+    let _worker = tokio::spawn(run_worker(
+        vec![
+            stalled_files.assignment(0, &stalled[0], Position::START),
+            stalled_files.assignment(1, &stalled[1], Position::START),
+            north_files.assignment(2, &north, Position::START),
+        ],
+        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        Arc::new(writer),
+        parallel_settings(1, 2),
+    ));
+
+    let mut north_messages = Vec::new();
+    while !matches!(
+        north_messages.last(),
+        Some(PartitionMessage::EndOfPartition { .. })
+    ) {
+        let deliveries = tokio::time::timeout(PATIENCE, reader.fetch(&north, 1))
+            .await
+            .expect("the shared decode thread must not wait for the full channels")
+            .unwrap();
+        assert!(
+            !deliveries.is_empty(),
+            "the worker stopped before the end of the partition"
+        );
+        north_messages.extend(deliveries.into_iter().map(|delivery| delivery.message));
+    }
+    assert_eq!(north_messages.len(), 7);
 }

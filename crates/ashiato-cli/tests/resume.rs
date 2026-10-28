@@ -1,12 +1,14 @@
 use std::collections::BTreeMap;
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
 
 use ashiato_duckdb::{Analyzer, AnalyzerSettings, PipelineStore, StoreError};
 use ashiato_ingest::{
-    FileSource, ListScope, LocalSource, PartitionAssignment, WorkerSettings, list_local, run_worker,
+    DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment,
+    WorkerSettings, list_local, run_worker,
 };
 use ashiato_pipeline::{RunPlan, SourceLocation, partition_channels};
 use ashiato_testkit::fixture::{Expectation, builtin_fixtures};
@@ -191,6 +193,8 @@ async fn stop_inside_a_file(plan_path: &Path) {
         WorkerSettings {
             allowed_lateness,
             max_message_size: MAX_MESSAGE_SIZE,
+            decode_threads: NonZeroUsize::MIN,
+            prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     ));
     loop {

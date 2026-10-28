@@ -1,6 +1,7 @@
 mod common;
 
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -12,7 +13,8 @@ use ashiato_core::rule::{Rule, RuleSource, Rules, SignalRule};
 use ashiato_core::sequence::ObservedSignal;
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore, StoreError};
 use ashiato_ingest::{
-    FileSource, LocalSource, PartitionAssignment, WorkerError, WorkerSettings, run_worker,
+    DEFAULT_PREFETCH_FILES, FileSource, LocalSource, PartitionAssignment, WorkerError,
+    WorkerSettings, run_worker,
 };
 use ashiato_pipeline::{ChannelReader, Manifest, PartitionReader, Position, partition_channels};
 use ashiato_testkit::fixture::{Expectation, builtin_fixtures};
@@ -210,6 +212,8 @@ fn start_worker(
         WorkerSettings {
             allowed_lateness: TimeDelta::minutes(LATENESS_MINUTES),
             max_message_size: MAX_MESSAGE_SIZE,
+            decode_threads: NonZeroUsize::MIN,
+            prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     ));
     (reader, worker)
