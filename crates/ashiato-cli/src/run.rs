@@ -1,4 +1,4 @@
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -12,10 +12,11 @@ use ashiato_core::validate::validate_streaming;
 use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
     DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment,
-    WorkerSettings, list_local, run_worker,
+    WorkerSettings, list_local, run_workers,
 };
 use ashiato_pipeline::{
-    Manifest, PlacementMode, RuleOrigin, RunPlan, SourceLocation, partition_channels,
+    Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation, assign_partitions,
+    partition_channels,
 };
 
 use crate::{DATABASE_FILE, load_catalog_from, report_warning, write_output};
@@ -118,9 +119,6 @@ fn local_root(plan: &RunPlan) -> anyhow::Result<PathBuf> {
     if plan.placement.mode == PlacementMode::Distributed {
         bail!("placement.mode: distributed is not supported yet; use single_process");
     }
-    if plan.placement.ingest_workers.get() != 1 {
-        bail!("placement.ingest_workers other than 1 is not supported yet");
-    }
     match &plan.source.location {
         SourceLocation::Local { root } => Ok(root.clone()),
         SourceLocation::S3 { .. } => bail!("source.kind: s3 is not supported yet; use local"),
@@ -186,14 +184,27 @@ async fn stream(
             .map(|assignment| assignment.manifest.partition.clone()),
         usize::try_from(plan.broker.max_messages_per_partition)?,
     );
-    let worker = tokio::spawn(run_worker(
-        assignments,
+    let partitions: Vec<PartitionId> = assignments
+        .iter()
+        .map(|assignment| assignment.manifest.partition.clone())
+        .collect();
+    let workers = assign_partitions(&partitions, plan.placement.ingest_workers)
+        .into_iter()
+        .map(|indexes| {
+            indexes
+                .into_iter()
+                .map(|index| assignments[index].clone())
+                .collect()
+        })
+        .collect();
+    let worker = tokio::spawn(run_workers(
+        workers,
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         WorkerSettings {
             allowed_lateness,
             max_message_size: usize::try_from(plan.broker.max_message_size)?,
-            decode_threads: std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
+            decode_threads: decode_threads(plan.placement.ingest_workers),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
     ));
@@ -216,4 +227,11 @@ async fn stream(
         (Err(error), _) => Err(error.into()),
         (Ok(()), Ok(())) => Ok(analyzer.into_store()),
     }
+}
+
+// Each worker has its own decode threads, so the CPUs are divided among the workers.
+fn decode_threads(workers: NonZeroU32) -> NonZeroUsize {
+    let cpus = std::thread::available_parallelism().map_or(1, NonZeroUsize::get);
+    let workers = usize::try_from(workers.get()).unwrap_or(usize::MAX);
+    NonZeroUsize::new(cpus / workers).unwrap_or(NonZeroUsize::MIN)
 }

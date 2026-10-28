@@ -116,8 +116,22 @@ pub async fn run_workers(
     writer: Arc<dyn PartitionWriter>,
     settings: WorkerSettings,
 ) -> Result<(), WorkerError> {
-    let _ = (workers, source, writer, settings);
-    todo!()
+    let mut tasks = JoinSet::new();
+    for assignments in workers {
+        tasks.spawn(run_worker(
+            assignments,
+            Arc::clone(&source),
+            Arc::clone(&writer),
+            settings,
+        ));
+    }
+    // Returning on the first error drops the other workers and their writers. Otherwise the
+    // writers they hold would keep the channels of the failed partitions open, and the analyzer
+    // would wait for those partitions forever.
+    while let Some(result) = tasks.join_next().await {
+        result.map_err(WorkerError::Task)??;
+    }
+    Ok(())
 }
 
 struct DecodedFile {
