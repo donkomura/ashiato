@@ -98,3 +98,13 @@ async fn console_takeover_mining_gives_the_same_verdicts_in_the_pipeline() {
     ])
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn role_chain_escalation_gives_the_same_verdicts_in_the_pipeline() {
+    assert_pipeline_verdicts(&[
+        "role_chain_escalation",
+        "assume_role_by_assumed_role",
+        "iam_privilege_modification",
+    ])
+    .await;
+}
