@@ -3,11 +3,12 @@ use std::io::Write;
 
 use ashiato_core::AnalysisWindow;
 use ashiato_core::SignalRow;
+use ashiato_core::context::Context;
 use ashiato_core::macros::Dialect;
 use ashiato_core::query::{
     BackendError, DataAvailability, QueryBackend, SignalQueryError, query_signal_rule,
 };
-use ashiato_core::rule::{Rule, RuleFile, RuleSource, SignalRule};
+use ashiato_core::rule::{Rule, RuleFile, RuleSource, Rules, SignalRule};
 use ashiato_duckdb::{DuckDbBackend, EventStore};
 use ashiato_testkit::record::RecordBuilder;
 use chrono::{DateTime, TimeDelta, Utc};
@@ -188,6 +189,39 @@ async fn s3_delete_burst_is_raised_at_the_threshold() {
         signal.attrs,
         [("bucket".to_owned(), "evidence".to_owned())].into()
     );
+}
+
+#[tokio::test]
+async fn params_of_the_context_change_the_number_of_signals() {
+    let Workspace { backend, .. } = workspace(&[
+        delete_object("evt-1", "2026-10-01T10:00:00Z", "evidence"),
+        delete_object("evt-2", "2026-10-01T10:01:00Z", "evidence"),
+    ]);
+    let rules = Rules::new([RuleSource::parse(
+        "test",
+        vec![RuleFile {
+            path: "s3_delete_burst/rule.yaml".to_owned(),
+            content: S3_DELETE_BURST.to_owned(),
+        }],
+    )
+    .unwrap()])
+    .unwrap();
+    let count = |rules: Rules| {
+        let backend = &backend;
+        async move {
+            let Some(Rule::Signal(rule)) = rules.get("s3_delete_burst") else {
+                panic!("s3_delete_burst is a signal rule");
+            };
+            query_signal_rule(backend, rule, &window())
+                .await
+                .unwrap()
+                .len()
+        }
+    };
+    let context = Context::parse("params:\n  s3_delete_burst.min_deletes: 2\n").unwrap();
+
+    assert_eq!(count(rules.clone()).await, 0);
+    assert_eq!(count(context.apply_params(&rules).unwrap()).await, 1);
 }
 
 #[tokio::test]
