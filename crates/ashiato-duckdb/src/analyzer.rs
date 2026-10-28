@@ -117,6 +117,7 @@ pub struct Analyzer {
     max_skew: Option<TimeDelta>,
     pending_rows: u64,
     metrics: AnalyzerMetrics,
+    committed_positions: Option<CommittedPositions>,
 }
 
 impl Analyzer {
@@ -181,6 +182,7 @@ impl Analyzer {
             metrics: AnalyzerMetrics {
                 pending_max_rows: pending_rows,
             },
+            committed_positions: None,
         })
     }
 
@@ -196,8 +198,23 @@ impl Analyzer {
     }
 
     pub fn with_committed_positions(self, shared: CommittedPositions) -> Self {
-        let _ = shared;
-        todo!()
+        let analyzer = Self {
+            committed_positions: Some(shared),
+            ..self
+        };
+        analyzer.share_committed_positions();
+        analyzer
+    }
+
+    fn share_committed_positions(&self) {
+        if let Some(shared) = &self.committed_positions {
+            shared.set(
+                self.partitions
+                    .iter()
+                    .map(|partition| partition.progress.committed)
+                    .collect(),
+            );
+        }
     }
 
     pub fn pending_rows(&self) -> Result<u64, AnalyzerError> {
@@ -510,6 +527,7 @@ impl Analyzer {
             partition.progress.end_committed = partition.progress.ended;
             partition.committed_watermark = partition.watermark;
         }
+        self.share_committed_positions();
         self.uncommitted_messages = 0;
         Ok(std::mem::take(&mut self.acks))
     }
