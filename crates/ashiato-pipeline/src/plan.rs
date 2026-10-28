@@ -3,6 +3,7 @@ use std::fs;
 use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
+use ashiato_core::context::{Context, ContextError};
 use ashiato_core::{AnalysisWindow, Duration, WindowError};
 use chrono::{DateTime, TimeDelta, Utc};
 use serde::de::{self, Visitor};
@@ -28,6 +29,7 @@ pub struct RunPlan {
     pub pipeline: PipelineSettings,
     pub placement: Placement,
     pub broker: BrokerSettings,
+    pub context: Context,
     window: AnalysisWindow,
     digest: String,
 }
@@ -123,6 +125,18 @@ pub enum PlanError {
     EndpointUrlForLocalSource,
     #[error("failed to compute the digest of the run plan")]
     Digest(#[source] serde_json::Error),
+    #[error("failed to read context file {path}")]
+    ReadContext {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("invalid context file {path}")]
+    Context {
+        path: PathBuf,
+        #[source]
+        source: ContextError,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -234,6 +248,7 @@ impl RunPlan {
             pipeline: raw.pipeline,
             placement: raw.placement,
             broker: raw.broker,
+            context: Context::default(),
             window,
             digest: digest(text)?,
         })

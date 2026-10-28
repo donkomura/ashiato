@@ -339,6 +339,40 @@ placement:
 }
 
 #[test]
+fn the_read_period_reaches_back_by_the_lookback_of_the_context() {
+    let dir = tempfile::tempdir().unwrap();
+    fs::write(
+        dir.path().join("context.yaml"),
+        "baseline:\n  lookback: 7d\n",
+    )
+    .unwrap();
+    let plan_path = dir.path().join("run.yaml");
+    fs::write(
+        &plan_path,
+        r#"
+run_id: case-1
+source:
+  kind: local
+  uri: logs
+analysis_window:
+  since: 2026-10-10T00:00:00Z
+  until: 2026-10-11T00:00:00Z
+context: ./context.yaml
+pipeline:
+  allowed_lateness: 30m
+placement:
+  mode: single_process
+"#,
+    )
+    .unwrap();
+    let plan = RunPlan::load(&plan_path).unwrap();
+
+    let scope = ListScope::from_plan(&plan);
+
+    assert_eq!(scope.period, at(3, 0, 0)..at(11, 0, 0));
+}
+
+#[test]
 fn scope_takes_accounts_and_regions_from_the_plan() {
     let plan = RunPlan::parse(
         r#"

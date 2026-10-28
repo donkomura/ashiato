@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use ashiato_core::Duration;
+use ashiato_core::context::Context;
 use ashiato_pipeline::{
     BrokerSettings, ByteSizeError, PlacementMode, PlanError, RuleOrigin, RunPlan, SourceLocation,
     parse_byte_size,
@@ -204,7 +205,7 @@ fn allowed_lateness_must_be_given() {
 #[test]
 fn unknown_keys_are_rejected() {
     for text in [
-        format!("{MINIMAL_PLAN}context: ./context.yaml\n"),
+        format!("{MINIMAL_PLAN}contexts: ./context.yaml\n"),
         MINIMAL_PLAN.replace("  uri: logs\n", "  uri: logs\n  prefix: AWSLogs/\n"),
         MINIMAL_PLAN.replace(
             "  mode: single_process\n",
@@ -440,4 +441,128 @@ fn malformed_byte_sizes_are_rejected() {
             "{text}"
         );
     }
+}
+
+const CONTEXT: &str = r#"
+suppress:
+  - origin: "workload:*"
+baseline:
+  lookback: 7d
+"#;
+
+struct ContextCase {
+    dir: tempfile::TempDir,
+}
+
+impl ContextCase {
+    fn new() -> Self {
+        Self {
+            dir: tempfile::tempdir().unwrap(),
+        }
+    }
+
+    fn write(&self, relative: &str, content: &str) -> PathBuf {
+        let path = self.dir.path().join(relative);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(&path, content).unwrap();
+        path
+    }
+
+    fn load(&self, context: &str, content: &str) -> Result<RunPlan, PlanError> {
+        self.write(&format!("case/{context}"), content);
+        let plan = self.write(
+            "case/run.yaml",
+            &format!("{MINIMAL_PLAN}context: ./{context}\n"),
+        );
+        RunPlan::load(&plan)
+    }
+}
+
+#[test]
+fn load_reads_the_context_file_relative_to_the_plan() {
+    let case = ContextCase::new();
+
+    let plan = case.load("context.yaml", CONTEXT).unwrap();
+
+    assert_eq!(plan.context, Context::parse(CONTEXT).unwrap());
+    assert!(plan.context.digest().is_some());
+    assert_eq!(plan.context.suppress.len(), 1);
+}
+
+#[test]
+fn a_plan_without_a_context_uses_the_default_context() {
+    let plan = parse(MINIMAL_PLAN).unwrap();
+
+    assert_eq!(plan.context, Context::default());
+    assert_eq!(plan.context.digest(), None);
+}
+
+#[test]
+fn the_lookback_of_the_context_sets_the_baseline_period() {
+    let case = ContextCase::new();
+
+    let window = case
+        .load("context.yaml", CONTEXT)
+        .unwrap()
+        .analysis_window();
+
+    let since = Utc.with_ymd_and_hms(2026, 9, 24, 0, 0, 0).unwrap();
+    assert_eq!(window.since(), since);
+    assert_eq!(window.baseline_since(), since - TimeDelta::days(7));
+}
+
+#[test]
+fn digest_changes_with_the_content_of_the_context_file() {
+    let case = ContextCase::new();
+    let base = case.load("context.yaml", CONTEXT).unwrap();
+
+    let changed = case
+        .load("context.yaml", &CONTEXT.replace("workload:*", "role:*"))
+        .unwrap();
+
+    assert_ne!(changed.digest(), base.digest());
+    assert_ne!(base.digest(), digest_of(MINIMAL_PLAN));
+}
+
+#[test]
+fn digest_does_not_depend_on_the_path_of_the_context_file() {
+    let first = ContextCase::new().load("context.yaml", CONTEXT).unwrap();
+
+    let moved = ContextCase::new()
+        .load("shared/case-context.yaml", CONTEXT)
+        .unwrap();
+
+    assert_eq!(moved.digest(), first.digest());
+}
+
+#[test]
+fn a_missing_context_file_is_an_error() {
+    let case = ContextCase::new();
+    let plan = case.write(
+        "case/run.yaml",
+        &format!("{MINIMAL_PLAN}context: ./context.yaml\n"),
+    );
+
+    let error = RunPlan::load(&plan).unwrap_err();
+
+    let expected = case.dir.path().join("case/context.yaml");
+    assert!(
+        matches!(&error, PlanError::ReadContext { path, .. } if *path == expected),
+        "{error:?}"
+    );
+}
+
+#[test]
+fn an_invalid_context_file_is_an_error() {
+    let case = ContextCase::new();
+
+    let error = case
+        .load("context.yaml", "baseline:\n  window: 7d\n")
+        .unwrap_err();
+
+    let expected = case.dir.path().join("case/context.yaml");
+    assert!(
+        matches!(&error, PlanError::Context { path, .. } if *path == expected),
+        "{error:?}"
+    );
 }
