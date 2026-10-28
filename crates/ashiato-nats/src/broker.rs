@@ -89,6 +89,7 @@ impl From<NatsError> for TransportError {
 // The stream of one run (7.1 節). The analyzer creates it at the start of the run and deletes it
 // at the end; the workers open the existing one.
 pub struct EventStream {
+    pub(crate) client: async_nats::Client,
     pub(crate) context: Context,
     pub(crate) stream: Stream,
     pub(crate) run_id: String,
@@ -106,7 +107,7 @@ impl EventStream {
     ) -> Result<Self, NatsError> {
         let run_id = checked_run_id(run_id)?;
         check_capacity(partitions, broker)?;
-        let context = jetstream::new(client);
+        let context = jetstream::new(client.clone());
         let stream = context
             .get_or_create_stream(stream_config(&run_id, broker))
             .await
@@ -115,6 +116,7 @@ impl EventStream {
                 source: source.into(),
             })?;
         Ok(Self {
+            client,
             context,
             stream,
             run_id,
@@ -124,7 +126,7 @@ impl EventStream {
 
     pub async fn open(client: async_nats::Client, run_id: &str) -> Result<Self, NatsError> {
         let run_id = checked_run_id(run_id)?;
-        let context = jetstream::new(client);
+        let context = jetstream::new(client.clone());
         let stream = context
             .get_stream(stream_name(&run_id))
             .await
@@ -133,6 +135,7 @@ impl EventStream {
                 source: source.into(),
             })?;
         Ok(Self {
+            client,
             context,
             stream,
             run_id,
