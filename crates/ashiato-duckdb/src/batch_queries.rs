@@ -15,6 +15,19 @@ const CREATE_BATCH_EVENTS_SQL: &str = "CREATE OR REPLACE TEMP TABLE events AS \
          CAST(resources AS JSON) AS resources) \
      FROM pending WHERE event_time >= ? AND event_time < ?";
 
+// The same rows as the baseline CTE of the batch processing (design.md 6.4). A row already
+// added from an earlier batch is not added again, so the table has no duplicates either.
+const INSERT_BASELINE_SQL: &str = "INSERT INTO baseline \
+     WITH period AS (SELECT * FROM events WHERE event_time >= $1 AND event_time < $2) \
+     SELECT principal_key, 'source_ip', source_ip FROM period \
+     UNION SELECT principal_key, 'user_agent', user_agent FROM period \
+     UNION SELECT principal_key, 'region', aws_region FROM period \
+     UNION SELECT principal_key, 'event_name', event_name FROM period \
+     EXCEPT SELECT principal_key, dim, value FROM baseline";
+const INSERT_BASELINE_PRINCIPALS_SQL: &str = "INSERT INTO baseline_principals \
+     SELECT principal_key FROM events WHERE event_time >= $1 AND event_time < $2 \
+     EXCEPT SELECT principal_key FROM baseline_principals";
+
 #[derive(Debug, thiserror::Error)]
 pub enum BatchQueryError {
     #[error(transparent)]
@@ -44,6 +57,16 @@ impl BatchQueries {
         end: EventTime,
     ) -> Result<(), BatchQueryError> {
         connection.execute(CREATE_BATCH_EVENTS_SQL, [timestamp(start), timestamp(end)])?;
+        // The baseline period comes before the analysis period, so the events are streamed in
+        // time order and the baseline is complete before the first batch of the analysis period
+        // is queried (streaming-pipeline.md 8.5).
+        let baseline_since = start.max(self.window.baseline_since());
+        let baseline_until = end.min(self.window.baseline_until());
+        if baseline_since < baseline_until {
+            let range = [timestamp(baseline_since), timestamp(baseline_until)];
+            connection.execute(INSERT_BASELINE_SQL, range.clone())?;
+            connection.execute(INSERT_BASELINE_PRINCIPALS_SQL, range)?;
+        }
         if start < self.window.until() && self.window.since() < end {
             self.query_signals(connection, start, end)?;
         }
