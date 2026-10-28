@@ -108,3 +108,15 @@ async fn role_chain_escalation_gives_the_same_verdicts_in_the_pipeline() {
     ])
     .await;
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn rules_using_the_baseline_give_the_same_verdicts_in_the_pipeline() {
+    assert_pipeline_verdicts(&[
+        "leaked_key_recon_persistence",
+        "first_seen_identity_probe",
+        "access_denied_enumeration",
+        "iam_persistence",
+        "novel_api_burst",
+    ])
+    .await;
+}
