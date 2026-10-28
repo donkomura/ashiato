@@ -223,6 +223,13 @@ impl Rules {
         self.rules.get(id)
     }
 
+    pub(crate) fn signal_rule_mut(&mut self, id: &str) -> Option<&mut SignalRule> {
+        match self.rules.get_mut(id) {
+            Some(Rule::Signal(rule)) => Some(rule),
+            _ => None,
+        }
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &Rule> {
         self.rules.values()
     }

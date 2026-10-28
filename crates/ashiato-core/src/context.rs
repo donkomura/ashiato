@@ -3,11 +3,12 @@ use std::collections::BTreeMap;
 use ipnet::IpNet;
 use serde::Deserialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 
 use crate::Duration;
 use crate::rule::Rules;
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Context {
     pub organization: Organization,
@@ -70,34 +71,95 @@ pub enum ContextError {
     UndeclaredParam { key: String, rule_id: String },
 }
 
-impl Default for Context {
-    fn default() -> Self {
-        todo!()
-    }
-}
+const DEFAULT_LOOKBACK: &str = "30d";
+const DEFAULT_MIN_TACTICS: usize = 3;
+const DEFAULT_THRESHOLD: u32 = 10;
 
 impl Default for Baseline {
     fn default() -> Self {
-        todo!()
+        Self {
+            lookback: DEFAULT_LOOKBACK
+                .parse()
+                .expect("the default lookback is written as a valid duration"),
+        }
     }
 }
 
 impl Default for Scoring {
     fn default() -> Self {
-        todo!()
+        Self {
+            min_tactics: DEFAULT_MIN_TACTICS,
+            threshold: DEFAULT_THRESHOLD,
+        }
     }
 }
 
 impl Context {
-    pub fn parse(_text: &str) -> Result<Self, ContextError> {
-        todo!()
+    pub fn parse(text: &str) -> Result<Self, ContextError> {
+        // A file with only comments is a YAML null, which is read as a file without settings.
+        let value: serde_yaml::Value = serde_yaml::from_str(text)?;
+        let mut context: Self = if value.is_null() {
+            Self::default()
+        } else {
+            serde_yaml::from_value(value)?
+        };
+        if let Some(index) = context.suppress.iter().position(Suppression::is_empty) {
+            return Err(ContextError::EmptySuppression { index });
+        }
+        if let Some(key) = context.params.keys().find(|key| split_param(key).is_none()) {
+            return Err(ContextError::MalformedParamKey { key: key.clone() });
+        }
+        context.digest = Some(sha256(text));
+        Ok(context)
     }
 
     pub fn digest(&self) -> Option<&str> {
-        todo!()
+        self.digest.as_deref()
     }
 
-    pub fn apply_params(&self, _rules: &Rules) -> Result<Rules, ContextError> {
-        todo!()
+    pub fn apply_params(&self, rules: &Rules) -> Result<Rules, ContextError> {
+        let mut rules = rules.clone();
+        for (key, value) in &self.params {
+            let (rule_id, param) = split_param(key)
+                .ok_or_else(|| ContextError::MalformedParamKey { key: key.clone() })?;
+            let rule = rules
+                .signal_rule_mut(rule_id)
+                .ok_or_else(|| ContextError::UnknownRule {
+                    key: key.clone(),
+                    rule_id: rule_id.to_owned(),
+                })?;
+            let declared =
+                rule.params
+                    .get_mut(param)
+                    .ok_or_else(|| ContextError::UndeclaredParam {
+                        key: key.clone(),
+                        rule_id: rule_id.to_owned(),
+                    })?;
+            *declared = value.clone();
+        }
+        Ok(rules)
     }
+}
+
+impl Suppression {
+    fn is_empty(&self) -> bool {
+        self.origin.is_none()
+            && self.signals.is_none()
+            && self.signal.is_none()
+            && self.principal_key.is_none()
+            && self.attrs.is_empty()
+    }
+}
+
+fn split_param(key: &str) -> Option<(&str, &str)> {
+    key.split_once('.')
+        .filter(|(rule_id, param)| !rule_id.is_empty() && !param.is_empty())
+}
+
+fn sha256(text: &str) -> String {
+    let hex: String = Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    format!("sha256:{hex}")
 }
