@@ -165,8 +165,13 @@ async fn stream(
         fetch_max: FETCH_MAX,
         commit_every: COMMIT_EVERY,
     };
-    let mut analyzer =
-        Analyzer::open(store, manifest.clone(), settings)?.with_queries(signal_rules, window);
+    let mut analyzer = Analyzer::open(store, manifest.clone(), settings)?
+        .with_queries(signal_rules, window)
+        .with_max_skew(
+            plan.pipeline
+                .max_skew
+                .map(|max_skew| max_skew.to_time_delta()),
+        );
     let assignments: Vec<PartitionAssignment> = manifest
         .partitions
         .into_iter()

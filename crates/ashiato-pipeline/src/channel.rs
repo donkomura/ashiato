@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::task::Poll;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
@@ -99,8 +100,49 @@ impl PartitionReader for ChannelReader {
         partitions: &[PartitionId],
         max: usize,
     ) -> Result<(usize, Vec<Delivery>), TransportError> {
-        let _ = (partitions, max);
-        todo!()
+        if let Some(unknown) = partitions
+            .iter()
+            .find(|partition| !self.receivers.contains_key(*partition))
+        {
+            return Err(TransportError::UnknownPartition(unknown.clone()));
+        }
+        if partitions.is_empty() || max == 0 {
+            return Ok((0, Vec::new()));
+        }
+        let receivers = &mut self.receivers;
+        let (index, first) = std::future::poll_fn(|cx| {
+            for (index, partition) in partitions.iter().enumerate() {
+                let receiver = receivers
+                    .get_mut(partition)
+                    .expect("every given partition was found above");
+                if let Poll::Ready(message) = receiver.poll_recv(cx) {
+                    return Poll::Ready((index, message));
+                }
+            }
+            Poll::Pending
+        })
+        .await;
+        let Some(first) = first else {
+            return Ok((index, Vec::new()));
+        };
+        let receiver = self
+            .receivers
+            .get_mut(&partitions[index])
+            .expect("every given partition was found above");
+        let mut messages = vec![first];
+        while messages.len() < max {
+            let Ok(message) = receiver.try_recv() else {
+                break;
+            };
+            messages.push(message);
+        }
+        Ok((
+            index,
+            messages
+                .into_iter()
+                .map(|message| self.deliver(message))
+                .collect(),
+        ))
     }
 
     // A channel hands each message out once and keeps no copy, so there is nothing to acknowledge.

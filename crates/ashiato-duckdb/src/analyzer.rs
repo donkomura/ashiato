@@ -6,7 +6,7 @@ use ashiato_pipeline::{
     AckTiming, Admission, Delivery, DeliveryHandle, EventTime, IngestedFile, Manifest, PartitionId,
     PartitionMessage, PartitionProgress, PartitionReader, PartitionWatermark, Position,
     TransportError, admit, batch_start, file_id, global_watermark, is_batch_complete,
-    recent_event_expiry,
+    readable_partitions, recent_event_expiry,
 };
 use chrono::TimeDelta;
 use duckdb::OptionalExt;
@@ -31,12 +31,8 @@ pub enum AnalyzerError {
     Store(#[from] StoreError),
     #[error(transparent)]
     DuckDb(#[from] duckdb::Error),
-    #[error("failed to receive the messages of partition {partition}")]
-    Transport {
-        partition: PartitionId,
-        #[source]
-        source: TransportError,
-    },
+    #[error("failed to receive the messages")]
+    Receive(#[source] TransportError),
     #[error("failed to acknowledge the committed messages")]
     Ack(#[source] TransportError),
     #[error(
@@ -63,6 +59,14 @@ struct PartitionState {
 }
 
 impl PartitionState {
+    fn accepted_watermark(&self) -> PartitionWatermark {
+        match (self.progress.ended, self.watermark) {
+            (true, _) => PartitionWatermark::Ended,
+            (false, None) => PartitionWatermark::NotStarted,
+            (false, Some(watermark)) => PartitionWatermark::At(watermark),
+        }
+    }
+
     fn committed_watermark(&self) -> PartitionWatermark {
         match (self.progress.end_committed, self.committed_watermark) {
             (true, _) => PartitionWatermark::Ended,
@@ -95,6 +99,7 @@ pub struct Analyzer {
     acks: Vec<DeliveryHandle>,
     uncommitted_messages: usize,
     queries: Option<BatchQueries>,
+    max_skew: Option<TimeDelta>,
 }
 
 impl Analyzer {
@@ -149,6 +154,7 @@ impl Analyzer {
             acks: Vec::new(),
             uncommitted_messages: 0,
             queries: None,
+            max_skew: None,
         })
     }
 
@@ -160,12 +166,14 @@ impl Analyzer {
     }
 
     pub fn with_max_skew(self, max_skew: Option<TimeDelta>) -> Self {
-        let _ = max_skew;
-        todo!()
+        Self { max_skew, ..self }
     }
 
     pub fn pending_rows(&self) -> Result<u64, AnalyzerError> {
-        todo!()
+        Ok(self
+            .store
+            .connection
+            .query_row("SELECT count(*) FROM pending", [], |row| row.get(0))?)
     }
 
     pub fn into_store(self) -> PipelineStore {
@@ -185,36 +193,53 @@ impl Analyzer {
             .all(|partition| partition.progress.ended)
     }
 
-    // Reading first the partition that holds the global watermark back lets batches be
-    // finalized as early as possible.
-    fn next_partition(&self) -> Option<usize> {
-        self.partitions
+    // The global watermark for max_skew is taken from the accepted watermarks rather than the
+    // committed ones. The partition that holds it back is then always readable, so the analyzer
+    // never waits on partitions none of which it may read, even with messages accepted but not
+    // committed yet. Which partition is read does not change the output (11 節), so deciding it
+    // from state that is not committed yet is safe. Lower watermarks come first, because reading
+    // the partition that holds the global watermark back lets batches be finalized earliest.
+    fn readable_partitions(&self) -> Vec<usize> {
+        let watermarks: Vec<PartitionWatermark> = self
+            .partitions
             .iter()
-            .enumerate()
-            .filter(|(_, partition)| !partition.progress.ended)
-            .min_by_key(|(index, partition)| (partition.watermark, *index))
-            .map(|(index, _)| index)
+            .map(PartitionState::accepted_watermark)
+            .collect();
+        let readable = readable_partitions(
+            &watermarks,
+            self.settings.read_since,
+            self.settings.allowed_lateness,
+            self.max_skew,
+        );
+        let mut indexes: Vec<usize> = (0..self.partitions.len())
+            .filter(|index| readable[*index])
+            .collect();
+        indexes.sort_by_key(|index| (self.partitions[*index].watermark, *index));
+        indexes
     }
 
+    // Takes messages from whichever readable partition has them, so that a lagging partition
+    // does not stop the others short of max_skew (9 節).
     pub async fn receive<R: PartitionReader + ?Sized>(
         &mut self,
         reader: &mut R,
     ) -> Result<(), AnalyzerError> {
-        let Some(index) = self.next_partition() else {
+        let candidates = self.readable_partitions();
+        if candidates.is_empty() {
             return Ok(());
-        };
-        let partition = self.partitions[index].id.clone();
-        let transport_error = |source| AnalyzerError::Transport {
-            partition: partition.clone(),
-            source,
-        };
-        let deliveries = reader
-            .fetch(&partition, self.settings.fetch_max)
-            .await
-            .map_err(transport_error)?;
-        if deliveries.is_empty() {
-            return Err(AnalyzerError::Closed(partition));
         }
+        let partitions: Vec<PartitionId> = candidates
+            .iter()
+            .map(|index| self.partitions[*index].id.clone())
+            .collect();
+        let (chosen, deliveries) = reader
+            .fetch_ready(&partitions, self.settings.fetch_max)
+            .await
+            .map_err(AnalyzerError::Receive)?;
+        if deliveries.is_empty() {
+            return Err(AnalyzerError::Closed(partitions[chosen].clone()));
+        }
+        let index = candidates[chosen];
         let mut acks_now = Vec::new();
         for delivery in deliveries {
             if let Some(handle) = self.accept(index, delivery)? {
