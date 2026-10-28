@@ -6,6 +6,7 @@ members = [
     "crates/ashiato-pipeline",
     "crates/ashiato-ingest",
     "crates/ashiato-duckdb",
+    "crates/ashiato-nats",
     "crates/ashiato-cli",
 ]
 
