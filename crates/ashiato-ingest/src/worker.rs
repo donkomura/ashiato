@@ -110,6 +110,16 @@ pub async fn run_worker(
     Ok(())
 }
 
+pub async fn run_workers(
+    workers: Vec<Vec<PartitionAssignment>>,
+    source: Arc<dyn FileSource>,
+    writer: Arc<dyn PartitionWriter>,
+    settings: WorkerSettings,
+) -> Result<(), WorkerError> {
+    let _ = (workers, source, writer, settings);
+    todo!()
+}
+
 struct DecodedFile {
     digest: FileDigest,
     rows: Result<Vec<EventRow>, ContentError>,

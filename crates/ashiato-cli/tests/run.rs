@@ -419,14 +419,6 @@ fn settings_that_are_not_implemented_yet_are_rejected() {
             ),
             "s3",
         ),
-        (
-            "workers",
-            PLAN.replace(
-                "mode: single_process",
-                "mode: single_process\n  ingest_workers: 2",
-            ),
-            "ingest_workers",
-        ),
     ] {
         let case = RunCase::new();
         case.write_plan(&plan);
@@ -440,6 +432,53 @@ fn settings_that_are_not_implemented_yet_are_rejected() {
             !case.dir.path().join("case/ashiato.duckdb").exists(),
             "{name}"
         );
+    }
+}
+
+#[test]
+fn the_number_of_ingest_workers_does_not_change_the_output() {
+    let case = RunCase::new();
+    for (account, region) in [
+        ("111111111111", "ap-northeast-1"),
+        ("222222222222", "us-east-1"),
+        ("333333333333", "eu-west-1"),
+    ] {
+        for (minute, id) in [(5, "a"), (25, "b"), (45, "c")] {
+            write_log_file(
+                &case.logs(),
+                &LogFile {
+                    records: vec![login(
+                        &format!("evt-{account}-{region}-{id}"),
+                        at(10, minute - 5),
+                    )],
+                    ..LogFile::new(account, region, at(10, minute))
+                },
+            );
+        }
+    }
+    let output = |workers: u32| {
+        let database = case.dir.path().join("case/ashiato.duckdb");
+        if database.exists() {
+            fs::remove_file(&database).unwrap();
+        }
+        case.write_plan(&PLAN.replace(
+            "mode: single_process",
+            &format!("mode: single_process\n  ingest_workers: {workers}"),
+        ));
+        let output = case.run_output(&["--emit-signals"]);
+        assert!(
+            output.status.success(),
+            "{workers} workers: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8(output.stdout).unwrap()
+    };
+
+    let one = output(1);
+
+    assert_eq!(of_type(&lines(one.as_bytes()), "signal").len(), 11, "{one}");
+    for workers in [2, 3, 5] {
+        assert_eq!(output(workers), one, "{workers} workers");
     }
 }
 

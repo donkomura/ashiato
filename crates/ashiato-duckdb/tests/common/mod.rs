@@ -7,7 +7,7 @@ use std::sync::Arc;
 use ashiato_duckdb::{Analyzer, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
     DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment, WorkerError,
-    WorkerSettings, list_local, run_worker,
+    WorkerSettings, list_local, run_worker, run_workers,
 };
 use ashiato_pipeline::{ChannelReader, EventTime, Manifest, Position, partition_channels};
 use ashiato_testkit::log_file::{LogFile, write_log_file};
@@ -117,6 +117,47 @@ pub fn start_worker(
     );
     let worker = tokio::spawn(run_worker(
         assignments,
+        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        Arc::new(writer),
+        WorkerSettings {
+            allowed_lateness: TimeDelta::minutes(LATENESS_MINUTES),
+            max_message_size: 1 << 20,
+            decode_threads: NonZeroUsize::new(2).unwrap(),
+            prefetch_files: DEFAULT_PREFETCH_FILES,
+        },
+    ));
+    (reader, worker)
+}
+
+// Starts one worker for each group of partition indexes, so that a test can vary the number of
+// workers and which partitions each of them has.
+pub fn start_workers(
+    manifest: &Manifest,
+    starts: &[Position],
+    groups: &[Vec<usize>],
+) -> (ChannelReader, JoinHandle<Result<(), WorkerError>>) {
+    let workers = groups
+        .iter()
+        .map(|group| {
+            group
+                .iter()
+                .map(|index| PartitionAssignment {
+                    index: u32::try_from(*index).unwrap(),
+                    manifest: manifest.partitions[*index].clone(),
+                    start: starts[*index],
+                })
+                .collect()
+        })
+        .collect();
+    let (writer, reader) = partition_channels(
+        manifest
+            .partitions
+            .iter()
+            .map(|partition| partition.partition.clone()),
+        4,
+    );
+    let worker = tokio::spawn(run_workers(
+        workers,
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         WorkerSettings {

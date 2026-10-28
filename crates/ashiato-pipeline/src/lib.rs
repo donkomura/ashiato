@@ -1,3 +1,4 @@
+mod assign;
 mod channel;
 mod manifest;
 mod message;
@@ -6,6 +7,7 @@ mod progress;
 mod schema;
 mod transport;
 
+pub use assign::assign_partitions;
 pub use channel::{ChannelReader, ChannelWriter, partition_channels};
 pub use manifest::{Manifest, ManifestEntry, PartitionManifest};
 pub use message::{EventTime, IngestedFile, PartitionId, PartitionMessage, Position, file_id};

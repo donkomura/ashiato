@@ -8,10 +8,10 @@ use arrow_array::cast::AsArray;
 use arrow_array::types::Int64Type;
 use ashiato_ingest::{
     DEFAULT_PREFETCH_FILES, FileSource, LocalSource, PartitionAssignment, SourceError, WorkerError,
-    WorkerSettings, run_worker,
+    WorkerSettings, run_worker, run_workers,
 };
 use ashiato_pipeline::{
-    ChannelWriter, ManifestEntry, PartitionId, PartitionManifest, PartitionMessage,
+    ChannelReader, ChannelWriter, ManifestEntry, PartitionId, PartitionManifest, PartitionMessage,
     PartitionReader, PartitionWriter, Position, TransportError, file_id, partition_channels,
 };
 use ashiato_testkit::record::RecordBuilder;
@@ -144,10 +144,19 @@ async fn ingest_from(
         .iter()
         .map(|assignment| assignment.manifest.partition.clone())
         .collect();
-    let (channel, mut reader) = partition_channels(partitions.clone(), capacity);
+    let (channel, reader) = partition_channels(partitions.clone(), capacity);
     let worker = tokio::spawn(run_worker(assignments, source, writer(channel), settings));
+    let messages = read_to_end(reader, &partitions).await;
+    worker.await.unwrap()?;
+    Ok(messages)
+}
+
+async fn read_to_end(
+    mut reader: ChannelReader,
+    partitions: &[PartitionId],
+) -> Vec<PartitionMessage> {
     let mut messages = Vec::new();
-    for partition in &partitions {
+    for partition in partitions {
         loop {
             let deliveries = reader.fetch(partition, 16).await.unwrap();
             if deliveries.is_empty() {
@@ -162,8 +171,7 @@ async fn ingest_from(
             }
         }
     }
-    worker.await.unwrap()?;
-    Ok(messages)
+    messages
 }
 
 fn event_ids(message: &PartitionMessage) -> Vec<String> {
@@ -651,4 +659,79 @@ async fn with_one_decode_thread_a_partition_keeps_going_while_the_others_are_not
         north_messages.extend(deliveries.into_iter().map(|delivery| delivery.message));
     }
     assert_eq!(north_messages.len(), 7);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn several_workers_send_the_same_messages_as_one_worker() {
+    let regions = ["ap-northeast-1", "eu-west-1", "us-east-1"];
+    let partitions: Vec<PartitionId> = regions.iter().map(|region| partition(region)).collect();
+    let mut files = Files::new();
+    for index in 0..5 {
+        files.add_records(&format!("{index}.json.gz"), records(index * 7 % 5));
+    }
+    files.add_bytes("broken.json.gz", b"not a gzip stream");
+    let assignment =
+        |index: usize| files.assignment(index as u32, &partitions[index], Position::START);
+
+    let (writer, reader) = partition_channels(partitions.clone(), 2);
+    let one = tokio::spawn(run_worker(
+        (0..3).map(assignment).collect(),
+        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        Arc::new(writer),
+        settings(8 * 1024),
+    ));
+    let expected = read_to_end(reader, &partitions).await;
+    one.await.unwrap().unwrap();
+
+    let (writer, reader) = partition_channels(partitions.clone(), 2);
+    let several = tokio::spawn(run_workers(
+        vec![
+            vec![assignment(2), assignment(0)],
+            vec![assignment(1)],
+            vec![],
+        ],
+        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        Arc::new(writer),
+        settings(8 * 1024),
+    ));
+    let messages = read_to_end(reader, &partitions).await;
+    several.await.unwrap().unwrap();
+
+    assert_eq!(messages.len(), expected.len());
+    assert_eq!(messages, expected);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_worker_that_fails_stops_the_other_workers() {
+    let failing = partition("us-east-1");
+    let waiting = partition("us-west-2");
+    let mut missing = Files::new();
+    let path = missing.add_records("missing.json.gz", records(1));
+    std::fs::remove_file(&path).unwrap();
+    let mut many = Files::new();
+    for index in 0..6 {
+        many.add_records(&format!("{index}.json.gz"), records(1));
+    }
+    let (writer, _reader) = partition_channels([failing.clone(), waiting.clone()], 1);
+
+    let error = tokio::time::timeout(
+        PATIENCE,
+        run_workers(
+            vec![
+                vec![missing.assignment(0, &failing, Position::START)],
+                vec![many.assignment(1, &waiting, Position::START)],
+            ],
+            Arc::new(LocalSource) as Arc<dyn FileSource>,
+            Arc::new(writer),
+            settings(1 << 20),
+        ),
+    )
+    .await
+    .expect("the workers must stop when one of them fails")
+    .unwrap_err();
+
+    assert!(
+        matches!(&error, WorkerError::Source { partition, .. } if *partition == failing),
+        "{error:?}"
+    );
 }
