@@ -1412,3 +1412,16 @@ fn analyze_takes_the_baseline_period_from_the_lookback_of_the_context() {
     assert_eq!(baseline_logins(&without), 1, "{without:#?}");
     assert_eq!(baseline_logins(&with), 0, "{with:#?}");
 }
+
+#[test]
+fn analyze_uses_the_scoring_thresholds_of_the_context() {
+    let case = AnalyzeCase::new();
+    let context = case.dir.path().join("context.yaml");
+    fs::write(&context, "scoring:\n  min_tactics: 1\n  threshold: 1\n").unwrap();
+
+    let lines = case.analyze(&["--context", context.to_str().unwrap()]);
+
+    let mut expected = alice_origin_score();
+    expected["above_threshold"] = json!(true);
+    assert_eq!(of_type(&lines, "origin_score"), [&expected]);
+}

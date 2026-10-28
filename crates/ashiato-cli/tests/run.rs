@@ -601,3 +601,14 @@ fn an_edited_context_file_on_the_same_workspace_is_an_error() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("digest"), "{stderr}");
 }
+
+#[test]
+fn run_uses_the_scoring_thresholds_of_the_context() {
+    let case = RunCase::new().with_context("scoring:\n  min_tactics: 1\n  threshold: 1\n");
+
+    let lines = case.run(&[]);
+
+    let mut expected = alice_origin_score();
+    expected["above_threshold"] = json!(true);
+    assert_eq!(of_type(&lines, "origin_score"), [&expected]);
+}
