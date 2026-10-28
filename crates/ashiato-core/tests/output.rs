@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use ashiato_core::lineage::{LineageStep, Origin, OriginKind};
 use ashiato_core::output::{
-    JsonLinesSink, OutputRecord, RuleSkippedRecord, RunRecord, ScenarioMatchRecord, SignalEvidence,
-    SignalRecord, Sink, SkipReason, StepRecord,
+    JsonLinesSink, OriginScoreRecord, OutputRecord, RuleSkippedRecord, RunRecord,
+    ScenarioMatchRecord, SignalEvidence, SignalRecord, Sink, SkipReason, StepRecord,
 };
 use ashiato_core::query::DataAvailability;
 use ashiato_core::rule::{DataRequirement, RuleSourceDigest};
@@ -191,6 +191,36 @@ fn scenario_match_record_has_the_shape_of_design_section_11() {
                 "role_arn": "arn:aws:iam::111111111111:role/admin",
                 "issued_by_event_id": "evt-0",
             }],
+        })
+    );
+}
+
+#[test]
+fn origin_score_record_has_the_shape_of_design_section_11() {
+    let record = OutputRecord::OriginScore(OriginScoreRecord {
+        origin: alice(),
+        score: 16,
+        tactics: vec![
+            Tactic::InitialAccess,
+            Tactic::Persistence,
+            Tactic::PrivilegeEscalation,
+        ],
+        signal_ids: vec![
+            "console_login_without_mfa".to_owned(),
+            "iam_user_created".to_owned(),
+        ],
+        above_threshold: true,
+    });
+
+    assert_eq!(
+        written(record),
+        json!({
+            "type": "origin_score",
+            "origin": { "id": format!("iam_user:{ALICE_ARN}"), "kind": "iam_user" },
+            "score": 16,
+            "tactics": ["TA0001", "TA0003", "TA0004"],
+            "signal_ids": ["console_login_without_mfa", "iam_user_created"],
+            "above_threshold": true,
         })
     );
 }

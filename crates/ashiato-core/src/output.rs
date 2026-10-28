@@ -19,6 +19,7 @@ pub enum OutputRecord {
     RuleSkipped(RuleSkippedRecord),
     Signal(SignalRecord),
     ScenarioMatch(ScenarioMatchRecord),
+    OriginScore(OriginScoreRecord),
     Summary(SummaryRecord),
 }
 
@@ -100,6 +101,15 @@ pub struct ScenarioMatchRecord {
 pub struct StepRecord {
     pub signal_id: String,
     pub signals: Vec<SignalEvidence>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct OriginScoreRecord {
+    pub origin: Origin,
+    pub score: u32,
+    pub tactics: Vec<Tactic>,
+    pub signal_ids: Vec<String>,
+    pub above_threshold: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
