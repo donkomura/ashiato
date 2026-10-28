@@ -168,14 +168,27 @@ pub fn global_watermark(
         .map_or(GlobalWatermark::Complete, GlobalWatermark::At)
 }
 
+// A partition whose watermark is max_skew or more ahead of the global watermark is not read, so
+// that pending holds events of about max_skew + allowed_lateness + batch (9 節). The partition
+// that holds the global watermark is never max_skew ahead of it, so while some partition has not
+// ended, at least one partition stays readable and the run cannot stall.
 pub fn readable_partitions(
     partitions: &[PartitionWatermark],
     read_since: EventTime,
     allowed_lateness: TimeDelta,
     max_skew: Option<TimeDelta>,
 ) -> Vec<bool> {
-    let _ = (partitions, read_since, allowed_lateness, max_skew);
-    todo!()
+    let global = global_watermark(partitions.iter().copied(), read_since, allowed_lateness);
+    partitions
+        .iter()
+        .map(|partition| match (*partition, global, max_skew) {
+            (PartitionWatermark::Ended, _, _) => false,
+            (PartitionWatermark::At(watermark), GlobalWatermark::At(global), Some(max_skew)) => {
+                watermark - global < max_skew
+            }
+            _ => true,
+        })
+        .collect()
 }
 
 pub fn batch_start(event_time: EventTime, batch: TimeDelta) -> EventTime {
