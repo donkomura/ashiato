@@ -73,7 +73,10 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
     for warning in &analysis.warnings {
         report_warning(warning);
     }
-    let scores = score(&analysis.signals, ScoringSettings::default());
+    let scores = score(
+        &analysis.signals,
+        ScoringSettings::from(&plan.context.scoring),
+    );
     if !args.severity.is_empty() {
         analysis.retain_severities(&args.severity);
     }

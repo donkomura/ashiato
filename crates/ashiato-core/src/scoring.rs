@@ -1,6 +1,7 @@
 use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::context::Scoring;
 use crate::lineage::Origin;
 use crate::output::{OriginScoreRecord, SignalRecord};
 use crate::{Severity, Tactic};
@@ -9,6 +10,15 @@ use crate::{Severity, Tactic};
 pub struct ScoringSettings {
     pub min_tactics: usize,
     pub threshold: u32,
+}
+
+impl From<&Scoring> for ScoringSettings {
+    fn from(scoring: &Scoring) -> Self {
+        Self {
+            min_tactics: scoring.min_tactics,
+            threshold: scoring.threshold,
+        }
+    }
 }
 
 impl Default for ScoringSettings {

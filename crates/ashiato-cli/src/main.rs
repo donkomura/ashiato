@@ -239,7 +239,7 @@ fn analyze(args: &AnalyzeArgs) -> anyhow::Result<()> {
     for warning in &analysis.warnings {
         report_warning(warning);
     }
-    let scores = score(&analysis.signals, ScoringSettings::default());
+    let scores = score(&analysis.signals, ScoringSettings::from(&context.scoring));
     if !args.severity.is_empty() {
         analysis.retain_severities(&args.severity);
     }
