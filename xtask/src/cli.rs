@@ -1,6 +1,11 @@
+use std::path::Path;
+
+use anyhow::bail;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
-use crate::topology::MAX_WORKERS;
+use crate::topology::{MAX_WORKERS, assign_cpus, read_physical_cores};
+
+const CPU_DIR: &str = "/sys/devices/system/cpu";
 
 #[derive(Debug, PartialEq, Parser)]
 #[command(name = "xtask", about = "Tasks of the ashiato repository")]
@@ -57,12 +62,30 @@ pub enum ScalingDataset {
     B,
 }
 
+// The scale shrinks the datasets of 14.1.2 節 for a quick run; 1.0 is the size in the design.
 pub fn parse_scale(text: &str) -> Result<f64, String> {
-    let _ = text;
-    todo!()
+    match text.parse::<f64>() {
+        Ok(scale) if scale.is_finite() && scale > 0.0 => Ok(scale),
+        _ => Err(format!("expected a positive number, got {text:?}")),
+    }
 }
 
 pub fn run(cli: Cli) -> anyhow::Result<()> {
-    let _ = cli;
-    todo!()
+    match cli.command {
+        Command::Integration(Integration::Correctness(args)) => correctness(&args),
+        Command::Integration(Integration::Scaling(_)) => {
+            bail!("integration scaling is not implemented yet (段階 33)")
+        }
+    }
+}
+
+fn correctness(args: &CorrectnessArgs) -> anyhow::Result<()> {
+    let cores = read_physical_cores(Path::new(CPU_DIR))?;
+    assign_cpus(&cores, MAX_WORKERS)?;
+    bail!(
+        "integration correctness --dataset {:?} --scale {} needs the dataset generator of \
+         ashiato-testkit, which is not wired yet",
+        args.dataset,
+        args.scale
+    )
 }
