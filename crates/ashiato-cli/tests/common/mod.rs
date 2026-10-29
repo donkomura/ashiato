@@ -413,6 +413,15 @@ pub fn kill(process: &mut Process) {
     }
 }
 
+// The final metrics lines of a role, which every role writes to stderr when it ends (14.1.5 節).
+pub fn final_metrics(stderr: &[u8], role: &str) -> Vec<Value> {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|line| line["metrics"] == role && line["final"] == true)
+        .collect()
+}
+
 // Compares the tables in both directions with EXCEPT ALL, so that rows that appear a
 // different number of times also count as a difference (14.1.3 節).
 pub fn assert_same_tables(reference: &Path, run: &Path) {

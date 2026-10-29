@@ -150,6 +150,7 @@ pub async fn worker_messages(
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::clone(&writer) as Arc<dyn PartitionWriter>,
         worker_settings(max_message_size),
+        Arc::default(),
     )
     .await
     .unwrap();

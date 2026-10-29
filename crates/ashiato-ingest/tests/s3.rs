@@ -166,6 +166,7 @@ async fn ingest(
             decode_threads: NonZeroUsize::MIN,
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     ));
     let mut messages = Vec::new();
     loop {

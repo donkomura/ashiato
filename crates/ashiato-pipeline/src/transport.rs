@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 
-use crate::{PartitionId, PartitionMessage};
+use crate::{PartitionId, PartitionMessage, SendTimes};
 
 #[derive(Debug, thiserror::Error)]
 pub enum TransportError {
@@ -38,6 +38,14 @@ pub struct Delivery {
 #[async_trait]
 pub trait PartitionWriter: Send + Sync {
     async fn put(&self, message: PartitionMessage) -> Result<(), TransportError>;
+    async fn put_timed(
+        &self,
+        message: PartitionMessage,
+        times: &SendTimes,
+    ) -> Result<(), TransportError> {
+        let _ = (message, times);
+        todo!()
+    }
 }
 
 #[async_trait]

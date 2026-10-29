@@ -7,7 +7,7 @@ use ashiato_ingest::{
     run_worker,
 };
 use ashiato_nats::{NatsControl, NatsWriter};
-use ashiato_pipeline::PartitionWriter;
+use ashiato_pipeline::{PartitionWriter, WorkerMetrics};
 
 #[derive(clap::Args)]
 pub(crate) struct IngestWorkerArgs {
@@ -55,6 +55,7 @@ async fn work(args: &IngestWorkerArgs) -> anyhow::Result<()> {
             decode_threads: std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::<WorkerMetrics>::default(),
     )
     .await?;
     client.flush().await?;

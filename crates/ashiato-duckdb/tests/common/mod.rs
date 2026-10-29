@@ -125,6 +125,7 @@ pub fn start_worker(
             decode_threads: NonZeroUsize::new(2).unwrap(),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     ));
     (reader, worker)
 }
@@ -139,14 +140,15 @@ pub fn start_workers(
     let workers = groups
         .iter()
         .map(|group| {
-            group
+            let assignments = group
                 .iter()
                 .map(|index| PartitionAssignment {
                     index: u32::try_from(*index).unwrap(),
                     manifest: manifest.partitions[*index].clone(),
                     start: starts[*index],
                 })
-                .collect()
+                .collect();
+            (assignments, Arc::default())
         })
         .collect();
     let (writer, reader) = partition_channels(

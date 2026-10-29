@@ -196,6 +196,7 @@ async fn stop_inside_a_file(plan_path: &Path) {
             decode_threads: NonZeroUsize::MIN,
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     ));
     loop {
         assert!(!analyzer.all_partitions_ended(), "no file was left");

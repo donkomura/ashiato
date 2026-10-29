@@ -12,7 +12,8 @@ use ashiato_ingest::{
 };
 use ashiato_pipeline::{
     ChannelReader, ChannelWriter, ManifestEntry, PartitionId, PartitionManifest, PartitionMessage,
-    PartitionReader, PartitionWriter, Position, TransportError, file_id, partition_channels,
+    PartitionReader, PartitionWriter, Position, TransportError, WorkerMetrics, file_id,
+    partition_channels,
 };
 use ashiato_testkit::record::RecordBuilder;
 use async_trait::async_trait;
@@ -145,7 +146,13 @@ async fn ingest_from(
         .map(|assignment| assignment.manifest.partition.clone())
         .collect();
     let (channel, reader) = partition_channels(partitions.clone(), capacity);
-    let worker = tokio::spawn(run_worker(assignments, source, writer(channel), settings));
+    let worker = tokio::spawn(run_worker(
+        assignments,
+        source,
+        writer(channel),
+        settings,
+        Arc::default(),
+    ));
     let messages = read_to_end(reader, &partitions).await;
     worker.await.unwrap()?;
     Ok(messages)
@@ -446,6 +453,7 @@ async fn a_partition_waiting_for_its_reader_does_not_hold_back_the_others() {
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         settings(1 << 20),
+        Arc::default(),
     ));
 
     let mut west_messages = Vec::new();
@@ -641,6 +649,7 @@ async fn with_one_decode_thread_a_partition_keeps_going_while_the_others_are_not
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         parallel_settings(1, 2),
+        Arc::default(),
     ));
 
     let mut north_messages = Vec::new();
@@ -679,6 +688,7 @@ async fn several_workers_send_the_same_messages_as_one_worker() {
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         settings(8 * 1024),
+        Arc::default(),
     ));
     let expected = read_to_end(reader, &partitions).await;
     one.await.unwrap().unwrap();
@@ -686,9 +696,9 @@ async fn several_workers_send_the_same_messages_as_one_worker() {
     let (writer, reader) = partition_channels(partitions.clone(), 2);
     let several = tokio::spawn(run_workers(
         vec![
-            vec![assignment(2), assignment(0)],
-            vec![assignment(1)],
-            vec![],
+            (vec![assignment(2), assignment(0)], Arc::default()),
+            (vec![assignment(1)], Arc::default()),
+            (vec![], Arc::default()),
         ],
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
@@ -718,8 +728,14 @@ async fn a_worker_that_fails_stops_the_other_workers() {
         PATIENCE,
         run_workers(
             vec![
-                vec![missing.assignment(0, &failing, Position::START)],
-                vec![many.assignment(1, &waiting, Position::START)],
+                (
+                    vec![missing.assignment(0, &failing, Position::START)],
+                    Arc::default(),
+                ),
+                (
+                    vec![many.assignment(1, &waiting, Position::START)],
+                    Arc::default(),
+                ),
             ],
             Arc::new(LocalSource) as Arc<dyn FileSource>,
             Arc::new(writer),
@@ -733,5 +749,122 @@ async fn a_worker_that_fails_stops_the_other_workers() {
     assert!(
         matches!(&error, WorkerError::Source { partition, .. } if *partition == failing),
         "{error:?}"
+    );
+}
+
+async fn ingest_measured(
+    assignments: Vec<PartitionAssignment>,
+    metrics: &Arc<WorkerMetrics>,
+) -> Vec<PartitionMessage> {
+    let partitions: Vec<PartitionId> = assignments
+        .iter()
+        .map(|assignment| assignment.manifest.partition.clone())
+        .collect();
+    let (writer, reader) = partition_channels(partitions.clone(), 4);
+    let worker = tokio::spawn(run_worker(
+        assignments,
+        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        Arc::new(writer),
+        settings(1 << 20),
+        Arc::clone(metrics),
+    ));
+    let messages = read_to_end(reader, &partitions).await;
+    worker.await.unwrap().unwrap();
+    messages
+}
+
+fn partition_counts(metrics: &WorkerMetrics) -> Vec<(String, u64, u64, u64)> {
+    metrics.line(0, true)["partitions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|partition| {
+            (
+                partition["partition"].as_str().unwrap().to_owned(),
+                partition["files"].as_u64().unwrap(),
+                partition["bytes"].as_u64().unwrap(),
+                partition["events"].as_u64().unwrap(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_worker_counts_the_files_bytes_and_events_it_sent_for_each_partition() {
+    let (east, west) = (partition("us-east-1"), partition("us-west-2"));
+    let mut files = Files::new();
+    files.add_records("a.json.gz", records(4));
+    files.add_records("b.json.gz", records(3));
+    files.add_bytes("broken.json.gz", b"not a gzip stream");
+    let bytes: u64 = files.entries.iter().map(|entry| entry.size).sum();
+    let metrics = Arc::new(WorkerMetrics::new(2));
+
+    ingest_measured(
+        vec![
+            files.assignment(0, &east, Position::START),
+            Files::new().assignment(1, &west, Position::START),
+        ],
+        &metrics,
+    )
+    .await;
+
+    assert_eq!(
+        partition_counts(&metrics),
+        [
+            ("111111111111/us-east-1".to_owned(), 3, bytes, 7),
+            ("111111111111/us-west-2".to_owned(), 0, 0, 0),
+        ]
+    );
+    assert!(metrics.fetch_wait.get() > Duration::ZERO);
+    assert!(metrics.decode.get() > Duration::ZERO);
+    assert_eq!(metrics.line(0, true)["worker_id"], 2);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_resumed_worker_counts_only_the_files_and_events_it_sent_in_this_start() {
+    let east = partition("us-east-1");
+    let mut files = Files::new();
+    files.add_records("a.json.gz", records(4));
+    files.add_records("b.json.gz", records(10));
+    files.add_records("c.json.gz", records(2));
+    let bytes = files.entries[1].size + files.entries[2].size;
+    let metrics = Arc::new(WorkerMetrics::new(0));
+
+    ingest_measured(
+        vec![files.assignment(0, &east, Position::new(1, 7))],
+        &metrics,
+    )
+    .await;
+
+    assert_eq!(
+        partition_counts(&metrics),
+        [("111111111111/us-east-1".to_owned(), 2, bytes, 5)]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_wait_of_a_full_channel_is_counted_as_rejected() {
+    let east = partition("us-east-1");
+    let mut files = Files::new();
+    for index in 0..4 {
+        files.add_records(&format!("{index}.json.gz"), records(1));
+    }
+    let (writer, mut reader) = partition_channels([east.clone()], 1);
+    let metrics = Arc::new(WorkerMetrics::new(0));
+    let worker = tokio::spawn(run_worker(
+        vec![files.assignment(0, &east, Position::START)],
+        Arc::new(LocalSource) as Arc<dyn FileSource>,
+        Arc::new(writer),
+        settings(1 << 20),
+        Arc::clone(&metrics),
+    ));
+
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    while !reader.fetch(&east, 16).await.unwrap().is_empty() {}
+    worker.await.unwrap().unwrap();
+
+    assert!(
+        metrics.send.rejected_wait.get() >= Duration::from_millis(150),
+        "{metrics:?}"
     );
 }

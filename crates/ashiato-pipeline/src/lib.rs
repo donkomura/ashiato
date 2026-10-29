@@ -3,6 +3,7 @@ mod channel;
 mod control;
 mod manifest;
 mod message;
+mod metrics;
 mod plan;
 mod progress;
 mod schema;
@@ -17,6 +18,10 @@ pub use control::{
 };
 pub use manifest::{Manifest, ManifestEntry, PartitionManifest};
 pub use message::{EventTime, IngestedFile, PartitionId, PartitionMessage, Position, file_id};
+pub use metrics::{
+    AnalyzerCounts, AnalyzerMetrics, Elapsed, Moment, PartitionCounts, SendTimes, WorkerMetrics,
+    unix_ms,
+};
 pub use plan::{
     BrokerSettings, ByteSizeError, PipelineSettings, Placement, PlacementMode, PlanError,
     RuleOrigin, RunPlan, Source, SourceLocation, parse_byte_size,

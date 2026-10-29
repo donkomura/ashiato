@@ -62,6 +62,11 @@ impl ControlService {
         })
     }
 
+    pub fn with_metrics(self, metrics: std::sync::Arc<ashiato_pipeline::AnalyzerMetrics>) -> Self {
+        let _ = metrics;
+        todo!()
+    }
+
     fn answer(&self, request: &str, body: &[u8], limit: usize) -> Vec<u8> {
         let reply = match request {
             PLAN => self.plan(body).map(|plan| encode(&plan)),

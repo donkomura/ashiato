@@ -40,7 +40,7 @@ docker rm --force $(docker ps --quiet --filter label=ashiato-test=nats)
 - `crates/ashiato-nats/tests/nats.rs`
   - ストリームとパーティションごとのコンシューマーが、`streaming-pipeline.md` の 7.1 節の設定で作られる。
   - `max_bytes` がパーティションの数 × `max_messages_per_partition` × `max_message_size` より小さいと、ストリームを作る前にエラーになる。
-  - パーティションのメッセージが `max_messages_per_partition` に達すると、取り込みワーカーの送信は、分析コンシューマーが確認応答を返すまで待つ。
+  - パーティションのメッセージが `max_messages_per_partition` に達すると、取り込みワーカーの送信は、分析コンシューマーが確認応答を返すまで待つ。待った時間は、計測値の `rejected_wait` に数えられる。
   - NATS を通した分析コンシューマーの表が、チャネルを通した場合と一致し、終了時にストリームにメッセージが残らない。
   - `ack_wait` を短くして再配信を起こしても、分析コンシューマーの表が変わらない。
   - 分析コンシューマーを確定の前に止めて再開すると、確認応答を返していないメッセージを受け取り直し、表が変わらない。
@@ -51,10 +51,12 @@ docker rm --force $(docker ps --quiet --filter label=ashiato-test=nats)
   - 分析コンシューマーが、ワーカー用の実行の定義と、確定した位置を答える。範囲外のワーカー ID には、理由を付けて断る。
   - 1 つの応答に収まらない一覧を、応答の大きさに収まるページに分けて返し、取り込みワーカーが全件を集める。
   - 分析コンシューマーが答えるまで、取り込みワーカーは要求を送り直す。
+  - 最初に `control.plan` の要求に答えた時刻が、計測値の `first_plan_response` に記録される。断った要求の時刻は記録されない。
 - `crates/ashiato-cli/tests/distributed.rs`
   - 分散の配置の出力とワークスペースの表が、1 プロセスの配置と一致し、終了時にストリームが消えている（`streaming-pipeline.md` の 14.1.3 節の 1〜3）。
   - 取り込みワーカーをファイルの途中で止めて再起動しても、出力と表が一致する。
   - 範囲外のワーカー ID で起動した取り込みワーカーは、エラーで止まる。
+  - `ashiato run` が分析コンシューマーの終了時の計測値を、`ashiato ingest-worker` が取り込みワーカーの終了時の計測値を、標準エラー出力に書く。分析コンシューマーの `first_plan_response`、`last_end_committed`、`correlated` がこの順に記録され、取り込んだファイルの数と、ワーカーが送り終えたファイルの数の合計が、一覧のファイルの数に一致する。
 - `crates/ashiato-cli/tests/distributed_failures.rs`（`streaming-pipeline.md` の 14.1.3 節の F1〜F4 を小さなフィクスチャで起こす）
   - 4 つのワーカーのうち 1 つを止めて再起動しても、出力と表が 1 プロセスの配置と一致する（F1）。
   - NATS サーバーを途中で再起動しても一致する（F2）。

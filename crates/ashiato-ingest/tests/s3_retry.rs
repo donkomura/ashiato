@@ -143,6 +143,7 @@ async fn ingest(source: S3Source, size: u64) -> (Vec<PartitionMessage>, Result<(
             decode_threads: NonZeroUsize::MIN,
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     ));
     let mut messages = Vec::new();
     loop {

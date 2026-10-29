@@ -17,7 +17,7 @@ use ashiato_ingest::{
 use ashiato_nats::{ControlService, EventStream, max_ack_pending, serve_control, validate_run_id};
 use ashiato_pipeline::{
     CommittedPositions, Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation,
-    assign_partitions, partition_channels, validate_distributed,
+    WorkerMetrics, assign_partitions, partition_channels, validate_distributed,
 };
 
 use crate::{DATABASE_FILE, load_catalog_from, report_warning, write_output};
@@ -251,6 +251,7 @@ async fn stream(
                 .map(|index| assignments[index].clone())
                 .collect()
         })
+        .map(|assignments| (assignments, Arc::<WorkerMetrics>::default()))
         .collect();
     let worker = tokio::spawn(run_workers(
         workers,

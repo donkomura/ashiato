@@ -1,9 +1,10 @@
 mod common;
 
+use std::process::Output;
 use std::time::{Duration, Instant};
 
 use ashiato_pipeline::PartitionId;
-use common::{BIG_ACCOUNT, BIG_REGION, Cluster, assert_same_run, finish, finish_all, kill};
+use common::{BIG_ACCOUNT, BIG_REGION, Cluster, assert_same_run, final_metrics, finish, kill};
 
 const BROKER: &str = "  max_messages_per_partition: 4\n";
 // Each file of the big partition takes several messages, so that a worker can be stopped
@@ -19,11 +20,33 @@ fn a_distributed_run_gives_the_same_output_and_tables_as_a_single_process() {
 
     let plan = cluster.distributed_plan("distributed", 2, BROKER);
     let run = cluster.spawn_run(&plan);
-    let workers = cluster.spawn_workers(2);
-    finish_all(workers);
+    let workers: Vec<Output> = cluster.spawn_workers(2).into_iter().map(finish).collect();
     let output = finish(run);
 
     assert_same_run(&cluster, (&reference, &expected), (&plan, &output.stdout));
+    let analyzer = final_metrics(&output.stderr, "analyzer");
+    assert_eq!(analyzer.len(), 1, "{analyzer:?}");
+    let analyzer = &analyzer[0];
+    assert_eq!(analyzer["manifest_files"], cluster.files, "{analyzer}");
+    assert_eq!(analyzer["ingested_files"], cluster.files, "{analyzer}");
+    let phases = &analyzer["phases_unix_ms"];
+    let answered = phases["first_plan_response"].as_u64().unwrap();
+    let ended = phases["last_end_committed"].as_u64().unwrap();
+    let correlated = phases["correlated"].as_u64().unwrap();
+    assert!(answered <= ended && ended <= correlated, "{analyzer}");
+    let mut files = 0;
+    for (worker_id, worker) in workers.iter().enumerate() {
+        let lines = final_metrics(&worker.stderr, "worker");
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        assert_eq!(lines[0]["worker_id"], worker_id, "{}", lines[0]);
+        files += lines[0]["partitions"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|partition| partition["files"].as_u64().unwrap())
+            .sum::<u64>();
+    }
+    assert_eq!(files, cluster.files);
 }
 
 #[test]

@@ -213,6 +213,11 @@ impl Analyzer {
         analyzer
     }
 
+    pub fn with_metrics(self, metrics: std::sync::Arc<ashiato_pipeline::AnalyzerMetrics>) -> Self {
+        let _ = metrics;
+        todo!()
+    }
+
     fn share_committed_positions(&self) {
         if let Some(shared) = &self.committed_positions {
             shared.set(

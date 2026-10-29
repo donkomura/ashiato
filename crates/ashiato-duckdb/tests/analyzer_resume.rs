@@ -215,6 +215,7 @@ fn start_worker(
             decode_threads: NonZeroUsize::MIN,
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     ));
     (reader, worker)
 }

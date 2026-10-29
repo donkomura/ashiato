@@ -13,7 +13,7 @@ use ashiato_nats::{
 };
 use ashiato_pipeline::{
     BrokerSettings, Delivery, DeliveryHandle, Manifest, PartitionId, PartitionMessage,
-    PartitionReader, PartitionWriter, Position, TransportError, partition_channels,
+    PartitionReader, PartitionWriter, Position, SendTimes, TransportError, partition_channels,
 };
 use ashiato_testkit::nats::Nats;
 use async_nats::jetstream::consumer::{AckPolicy, DeliverPolicy};
@@ -98,6 +98,7 @@ async fn channel_tables(workspace: &Workspace, manifest: &Manifest) -> Vec<Vec<S
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         worker_settings(MAX_MESSAGE_SIZE),
+        Arc::default(),
     ));
     analyzer.run(&mut reader).await.unwrap();
     worker.await.unwrap().unwrap();
@@ -143,6 +144,7 @@ async fn publish_all(nats: &Nats, manifest: &Manifest) {
         Arc::new(LocalSource) as Arc<dyn FileSource>,
         Arc::new(writer),
         worker_settings(MAX_MESSAGE_SIZE),
+        Arc::default(),
     )
     .await
     .unwrap();
@@ -345,10 +347,11 @@ async fn a_full_partition_makes_the_writer_wait_until_a_message_is_acknowledged(
     writer.put(messages[0].clone()).await.unwrap();
     writer.put(messages[1].clone()).await.unwrap();
 
+    let times = Arc::new(SendTimes::default());
     let third = tokio::spawn({
-        let writer = Arc::clone(&writer);
+        let (writer, times) = (Arc::clone(&writer), Arc::clone(&times));
         let message = messages[2].clone();
-        async move { writer.put(message).await }
+        async move { writer.put_timed(message, &times).await }
     });
     tokio::time::sleep(Duration::from_secs(1)).await;
     assert!(!third.is_finished());
@@ -361,6 +364,11 @@ async fn a_full_partition_makes_the_writer_wait_until_a_message_is_acknowledged(
         .unwrap()
         .unwrap()
         .unwrap();
+    assert!(
+        times.rejected_wait.get() >= Duration::from_millis(900),
+        "{times:?}"
+    );
+    assert!(times.publish_wait.get() > Duration::ZERO, "{times:?}");
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -392,6 +400,7 @@ async fn the_analyzer_gets_the_same_tables_through_nats_as_through_channels() {
                 Arc::new(LocalSource) as Arc<dyn FileSource>,
                 Arc::new(writer),
                 worker_settings(MAX_MESSAGE_SIZE),
+                Arc::default(),
             )
             .await
         }
@@ -585,6 +594,7 @@ async fn a_restart_of_the_server_does_not_change_the_tables() {
                 Arc::new(LocalSource) as Arc<dyn FileSource>,
                 Arc::new(writer),
                 worker_settings(MAX_MESSAGE_SIZE),
+                Arc::default(),
             )
             .await
         }

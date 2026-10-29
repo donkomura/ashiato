@@ -169,6 +169,7 @@ async fn worker_batches(path: &std::path::Path) -> Vec<RecordBatch> {
             decode_threads: NonZeroUsize::MIN,
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     )
     .await
     .unwrap();

@@ -1,7 +1,9 @@
 mod common;
 
+use std::sync::Arc;
+
 use ashiato_ingest::{ListScope, list_local};
-use ashiato_pipeline::{EventTime, Manifest, PartitionReader};
+use ashiato_pipeline::{AnalyzerMetrics, EventTime, Manifest, PartitionReader};
 use ashiato_testkit::record::RecordBuilder;
 use common::{Workspace, at, log, open, query_strings, rows, run_to_end, settings, start_worker};
 use serde_json::Value;
@@ -270,7 +272,8 @@ async fn the_largest_number_of_pending_rows_is_kept_after_batches_are_finalized(
     hourly_files(&workspace, "222222222222");
     let manifest = workspace.manifest();
     let database = workspace.database("run");
-    let mut analyzer = open(&database, &manifest, settings());
+    let metrics = Arc::new(AnalyzerMetrics::default());
+    let mut analyzer = open(&database, &manifest, settings()).with_metrics(Arc::clone(&metrics));
     let (mut reader, worker) = start_worker(&manifest, &analyzer.resume_positions());
 
     let mut peaks = Vec::new();
@@ -279,7 +282,7 @@ async fn the_largest_number_of_pending_rows_is_kept_after_batches_are_finalized(
         let handles = analyzer.commit().unwrap();
         reader.ack(&handles).await.unwrap();
         analyzer.finalize_batches().unwrap();
-        peaks.push(analyzer.metrics().pending_max_rows);
+        peaks.push(metrics.counts().pending_max_rows);
     }
     drop(analyzer);
     worker.await.unwrap().unwrap();

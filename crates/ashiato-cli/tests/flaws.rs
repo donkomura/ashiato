@@ -254,11 +254,12 @@ fn flaws_cloud_dataset_is_streamed_from_s3() {
     let metrics: Vec<Value> = stderr
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter(|line| line["metrics"] == "run")
+        .filter(|line| line["metrics"] == "analyzer" && line["final"] == true)
         .collect();
     assert_eq!(metrics.len(), 1, "{stderr}");
     let pending_max_rows = metrics[0]["pending_max_rows"].as_u64().unwrap();
     assert!(pending_max_rows > 0, "{}", metrics[0]);
+    assert_eq!(metrics[0]["ingested_files"], layout.files, "{}", metrics[0]);
 
     eprintln!("analysis window: {since} to {until}");
     eprintln!(

@@ -205,6 +205,7 @@ async fn run_lagging(database: &Path, manifest: &Manifest, max_skew: Option<Time
             decode_threads: NonZeroUsize::new(2).unwrap(),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     ));
     let mut reader = SlowingReader {
         inner: channel,

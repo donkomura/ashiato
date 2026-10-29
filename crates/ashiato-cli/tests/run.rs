@@ -363,22 +363,75 @@ fn run_scores_the_origins_before_filtering_by_severity_and_not_in_the_summary() 
     assert!(of_type(&summary, "origin_score").is_empty(), "{summary:#?}");
 }
 
+fn metrics(stderr: &[u8], role: &str) -> Vec<Value> {
+    String::from_utf8_lossy(stderr)
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter(|line| line["metrics"] == role)
+        .collect()
+}
+
+fn final_lines(lines: &[Value]) -> Vec<&Value> {
+    lines.iter().filter(|line| line["final"] == true).collect()
+}
+
 #[test]
-fn run_writes_the_largest_number_of_pending_rows_to_stderr_as_one_json_line() {
+fn run_writes_the_final_metrics_of_the_analyzer_and_each_worker_to_stderr_only() {
     let case = RunCase::new();
+    case.write_plan(&PLAN.replace(
+        "mode: single_process\n",
+        "mode: single_process\n  ingest_workers: 2\n",
+    ));
 
     let output = case.run_output(&[]);
 
     assert!(output.status.success(), "{output:?}");
-    let metrics: Vec<Value> = String::from_utf8_lossy(&output.stderr)
-        .lines()
-        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
-        .filter(|line| line.get("metrics").is_some())
-        .collect();
-    assert_eq!(metrics.len(), 1, "{metrics:?}");
-    assert_eq!(metrics[0]["metrics"], "run");
+    let analyzer = metrics(&output.stderr, "analyzer");
+    assert_eq!(final_lines(&analyzer).len(), 1, "{analyzer:?}");
+    let last = analyzer.last().unwrap();
+    assert_eq!(last["final"], true, "{last}");
+    assert_eq!(last["manifest_files"], 4, "{last}");
+    assert_eq!(last["ingested_files"], last["manifest_files"], "{last}");
     // The few messages of the case are committed at once, so both logins are pending together.
-    assert_eq!(metrics[0]["pending_max_rows"], 2, "{}", metrics[0]);
+    assert_eq!(last["pending_max_rows"], 2, "{last}");
+    assert_eq!(last["pending_rows"], 0, "{last}");
+    assert!(
+        last["global_watermark"]
+            .as_str()
+            .is_some_and(|watermark| watermark.ends_with('Z')),
+        "{last}"
+    );
+    for time in ["fetch_wait", "commit", "batch"] {
+        assert!(last["time_ms"][time].is_u64(), "{last}");
+    }
+    let phases = &last["phases_unix_ms"];
+    assert!(phases["first_plan_response"].is_null(), "{last}");
+    let ended = phases["last_end_committed"].as_u64().unwrap();
+    let correlated = phases["correlated"].as_u64().unwrap();
+    assert!(ended <= correlated, "{last}");
+    assert!(correlated <= last["unix_ms"].as_u64().unwrap(), "{last}");
+
+    let workers = metrics(&output.stderr, "worker");
+    let workers = final_lines(&workers);
+    let mut ids: Vec<u64> = workers
+        .iter()
+        .map(|line| line["worker_id"].as_u64().unwrap())
+        .collect();
+    ids.sort_unstable();
+    assert_eq!(ids, [0, 1], "{workers:?}");
+    let partitions: Vec<&Value> = workers
+        .iter()
+        .flat_map(|line| line["partitions"].as_array().unwrap())
+        .collect();
+    assert_eq!(partitions.len(), 1, "{workers:?}");
+    assert_eq!(partitions[0]["partition"], "111111111111/us-east-1");
+    assert_eq!(partitions[0]["files"], last["manifest_files"]);
+    assert_eq!(partitions[0]["events"], 3);
+    for worker in &workers {
+        for time in ["fetch_wait", "decode", "publish_wait", "rejected_wait"] {
+            assert!(worker["time_ms"][time].is_u64(), "{worker}");
+        }
+    }
     assert!(
         lines(&output.stdout)
             .iter()

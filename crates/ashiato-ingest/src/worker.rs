@@ -6,7 +6,8 @@ use std::sync::Arc;
 use arrow_array::RecordBatch;
 use ashiato_pipeline::{
     EventTime, IngestedFile, ManifestEntry, PartitionId, PartitionManifest, PartitionMessage,
-    PartitionWriter, Position, TransportError, events_schema, file_id, file_watermark,
+    PartitionWriter, Position, TransportError, WorkerMetrics, events_schema, file_id,
+    file_watermark,
 };
 use async_trait::async_trait;
 use chrono::TimeDelta;
@@ -98,7 +99,9 @@ pub async fn run_worker(
     source: Arc<dyn FileSource>,
     writer: Arc<dyn PartitionWriter>,
     settings: WorkerSettings,
+    metrics: Arc<WorkerMetrics>,
 ) -> Result<(), WorkerError> {
+    let _ = metrics;
     let decoders = Arc::new(Semaphore::new(settings.decode_threads.get()));
     let mut tasks = JoinSet::new();
     for assignment in assignments {
@@ -117,18 +120,19 @@ pub async fn run_worker(
 }
 
 pub async fn run_workers(
-    workers: Vec<Vec<PartitionAssignment>>,
+    workers: Vec<(Vec<PartitionAssignment>, Arc<WorkerMetrics>)>,
     source: Arc<dyn FileSource>,
     writer: Arc<dyn PartitionWriter>,
     settings: WorkerSettings,
 ) -> Result<(), WorkerError> {
     let mut tasks = JoinSet::new();
-    for assignments in workers {
+    for (assignments, metrics) in workers {
         tasks.spawn(run_worker(
             assignments,
             Arc::clone(&source),
             Arc::clone(&writer),
             settings,
+            metrics,
         ));
     }
     // Returning on the first error drops the other workers and their writers. Otherwise the

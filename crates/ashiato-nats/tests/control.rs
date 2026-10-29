@@ -1,10 +1,11 @@
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use ashiato_nats::{ControlService, EventStream, NatsControl, NatsWriter, serve_control};
 use ashiato_pipeline::{
-    CommittedPositions, ControlClient, Manifest, ManifestEntry, PartitionId, PartitionManifest,
-    PartitionMessage, PartitionWriter, Position, RunPlan, WorkerPlan,
+    AnalyzerMetrics, CommittedPositions, ControlClient, Manifest, ManifestEntry, PartitionId,
+    PartitionManifest, PartitionMessage, PartitionWriter, Position, RunPlan, WorkerPlan, unix_ms,
 };
 use ashiato_testkit::nats::Nats;
 use chrono::{TimeZone, Utc};
@@ -156,6 +157,39 @@ async fn the_plan_of_a_worker_and_the_committed_positions_are_answered() {
     ]);
     let positions = control.resume_positions(&asked).await.unwrap();
     assert_eq!(positions[&partition("111111111111")], Position::new(3, 0));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs Docker for the NATS server; see docs/nats-testing.md"]
+async fn the_time_of_the_first_plan_answered_is_marked() {
+    let nats = Nats::start();
+    let client = connect(&nats).await;
+    let metrics = Arc::new(AnalyzerMetrics::default());
+    let service = ControlService::new(
+        &plan(2),
+        manifest(entries(3)),
+        CommittedPositions::default(),
+    )
+    .unwrap()
+    .with_metrics(Arc::clone(&metrics));
+    let _server = serve_control(client.clone(), RUN_ID, service)
+        .await
+        .unwrap();
+    let control = NatsControl::new(client, RUN_ID).unwrap();
+
+    control.plan(2).await.unwrap_err();
+    assert_eq!(metrics.first_plan_response.get(), None);
+    let before = unix_ms();
+    control.plan(1).await.unwrap();
+    let after = unix_ms();
+    std::thread::sleep(Duration::from_millis(10));
+    control.plan(0).await.unwrap();
+
+    let marked = metrics.first_plan_response.get().unwrap();
+    assert!(
+        before <= marked && marked <= after,
+        "{before} {marked} {after}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

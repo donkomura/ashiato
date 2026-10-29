@@ -88,6 +88,7 @@ async fn worker_messages(manifest: &Manifest) -> HashMap<PartitionId, Vec<Partit
             decode_threads: NonZeroUsize::new(2).unwrap(),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
+        Arc::default(),
     )
     .await
     .unwrap();
