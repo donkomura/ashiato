@@ -323,3 +323,189 @@ fn generate_rejects_a_directory_that_is_not_empty() {
         "{result:?}"
     );
 }
+
+fn event_time(record: &Value) -> DateTime<Utc> {
+    DateTime::parse_from_rfc3339(record["eventTime"].as_str().unwrap())
+        .unwrap()
+        .with_timezone(&Utc)
+}
+
+fn is_s3_data_event(record: &Value) -> bool {
+    record["eventSource"] == "s3.amazonaws.com" && record["eventCategory"] == "Data"
+}
+
+fn scenario_ids(summary: &DatasetSummary) -> Vec<&str> {
+    let mut ids: Vec<&str> = summary
+        .expected_scenarios
+        .iter()
+        .map(|scenario| scenario.scenario_id.as_str())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+#[test]
+fn dataset_a_contains_a_broken_gzip_a_broken_json_and_an_empty_records_file() {
+    let (dir, _summary) = generated(&spec(DatasetKind::A, SEED, SCALE));
+
+    let files = log_files(dir.path());
+    let mut broken_gzip = 0;
+    let mut broken_json = 0;
+    let mut empty_records = 0;
+    for content in files.values() {
+        let mut text = String::new();
+        if GzDecoder::new(content.as_slice())
+            .read_to_string(&mut text)
+            .is_err()
+        {
+            broken_gzip += 1;
+        } else if serde_json::from_str::<Value>(&text).is_err() {
+            broken_json += 1;
+        } else if records(content).unwrap().is_empty() {
+            empty_records += 1;
+        }
+    }
+    assert_eq!((broken_gzip, broken_json, empty_records), (1, 1, 1));
+}
+
+#[test]
+fn dataset_a_delivers_some_events_by_both_the_organization_and_the_account_trail() {
+    let (dir, summary) = generated(&spec(DatasetKind::A, SEED, SCALE));
+
+    let mut organization: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
+    let mut account: BTreeMap<(String, String), BTreeSet<String>> = BTreeMap::new();
+    for (path, content) in log_files(dir.path()) {
+        let log = parse_log_path(&path);
+        let trail = if log.org_id.is_some() {
+            &mut organization
+        } else {
+            &mut account
+        };
+        let ids = trail.entry((log.account, log.region)).or_default();
+        for record in records(&content).unwrap_or_default() {
+            ids.insert(record["eventID"].as_str().unwrap().to_owned());
+        }
+    }
+    assert!(!account.is_empty());
+    for (partition, ids) in &account {
+        assert!(!ids.is_empty(), "{partition:?}");
+        assert!(ids.is_subset(&organization[partition]), "{partition:?}");
+    }
+    assert_eq!(organization.len(), 11, "{summary:?}");
+}
+
+#[test]
+fn dataset_a_contains_late_and_slightly_newer_events_and_events_at_batch_boundaries() {
+    let (dir, summary) = generated(&spec(DatasetKind::A, SEED, SCALE));
+
+    let lateness = summary
+        .allowed_lateness
+        .parse::<ashiato_core::Duration>()
+        .unwrap()
+        .to_time_delta();
+    let batch = summary
+        .batch
+        .parse::<ashiato_core::Duration>()
+        .unwrap()
+        .to_time_delta();
+    let mut late = 0;
+    let mut newer = 0;
+    let mut on_boundary = 0;
+    for (path, content) in log_files(dir.path()) {
+        let file_time = parse_log_path(&path).file_time;
+        for record in records(&content).unwrap_or_default() {
+            let time = event_time(&record);
+            if time < file_time - lateness {
+                late += 1;
+            }
+            if time > file_time {
+                newer += 1;
+            }
+            if summary.since <= time && time.timestamp() % batch.num_seconds() == 0 {
+                on_boundary += 1;
+            }
+        }
+    }
+    assert!(late > 0);
+    assert!(newer > 0);
+    assert!(on_boundary > 0);
+}
+
+#[test]
+fn dataset_a_without_data_events_drops_only_the_s3_data_events() {
+    let (with_dir, with) = generated(&spec(DatasetKind::A, SEED, SCALE));
+    let (without_dir, without) = generated(&spec(DatasetKind::ANoDataEvents, SEED, SCALE));
+
+    let with_files = log_files(with_dir.path());
+    let without_files = log_files(without_dir.path());
+    assert_eq!(
+        with_files.keys().collect::<Vec<_>>(),
+        without_files.keys().collect::<Vec<_>>()
+    );
+    let with_records: Vec<Value> = with_files
+        .values()
+        .filter_map(|c| records(c))
+        .flatten()
+        .collect();
+    let without_records: Vec<Value> = without_files
+        .values()
+        .filter_map(|c| records(c))
+        .flatten()
+        .collect();
+    assert!(with_records.iter().any(is_s3_data_event));
+    assert!(!without_records.iter().any(is_s3_data_event));
+    let kept: Vec<&Value> = with_records
+        .iter()
+        .filter(|r| !is_s3_data_event(r))
+        .collect();
+    assert_eq!(kept, without_records.iter().collect::<Vec<_>>());
+    assert_eq!(
+        scenario_ids(&with),
+        [
+            "console_takeover_mining",
+            "cross_account_s3_destruction",
+            "leaked_key_recon_persistence",
+            "role_chain_escalation",
+        ]
+    );
+    assert_eq!(
+        scenario_ids(&without),
+        [
+            "console_takeover_mining",
+            "leaked_key_recon_persistence",
+            "role_chain_escalation",
+        ]
+    );
+}
+
+#[test]
+fn datasets_embed_the_four_scenarios_with_lineage_across_accounts() {
+    for kind in [DatasetKind::A, DatasetKind::B] {
+        let (_dir, summary) = generated(&spec(kind, SEED, SCALE));
+
+        assert_eq!(
+            scenario_ids(&summary),
+            [
+                "console_takeover_mining",
+                "cross_account_s3_destruction",
+                "leaked_key_recon_persistence",
+                "role_chain_escalation",
+            ],
+            "{kind:?}"
+        );
+        for scenario in &summary.expected_scenarios {
+            assert!(scenario.start_time <= scenario.end_time, "{scenario:?}");
+            assert!(summary.since <= scenario.start_time, "{scenario:?}");
+            assert!(scenario.end_time < summary.until, "{scenario:?}");
+            let crosses_accounts = matches!(
+                scenario.scenario_id.as_str(),
+                "cross_account_s3_destruction" | "role_chain_escalation"
+            );
+            assert_eq!(
+                scenario.origin.kind == "external_principal",
+                crosses_accounts,
+                "{scenario:?}"
+            );
+        }
+    }
+}
