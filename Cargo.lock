@@ -3700,6 +3700,7 @@ dependencies = [
  "anyhow",
  "ashiato-testkit",
  "clap",
+ "serde",
  "serde_yaml",
  "tempfile",
  "thiserror",
