@@ -509,3 +509,42 @@ fn datasets_embed_the_four_scenarios_with_lineage_across_accounts() {
         }
     }
 }
+
+#[test]
+fn datasets_use_a_session_issued_in_the_baseline_and_sessions_issued_in_other_accounts() {
+    for kind in [DatasetKind::A, DatasetKind::B] {
+        let (dir, summary) = generated(&spec(kind, SEED, SCALE));
+
+        let records: Vec<Value> = log_files(dir.path())
+            .values()
+            .filter_map(|content| records(content))
+            .flatten()
+            .collect();
+        let issued: BTreeMap<&str, &Value> = records
+            .iter()
+            .filter(|record| record["eventName"] == "AssumeRole")
+            .map(|record| {
+                let key = &record["responseElements"]["credentials"]["accessKeyId"];
+                (key.as_str().unwrap(), record)
+            })
+            .collect();
+        let mut from_baseline = BTreeSet::new();
+        let mut across_accounts = BTreeSet::new();
+        for record in &records {
+            let Some((key, issue)) = record["userIdentity"]["accessKeyId"]
+                .as_str()
+                .and_then(|key| issued.get_key_value(key))
+            else {
+                continue;
+            };
+            if event_time(issue) < summary.since && summary.since <= event_time(record) {
+                from_baseline.insert(*key);
+            }
+            if issue["recipientAccountId"] != record["recipientAccountId"] {
+                across_accounts.insert(*key);
+            }
+        }
+        assert!(!from_baseline.is_empty(), "{kind:?}");
+        assert_eq!(across_accounts.len(), 2, "{kind:?}: {across_accounts:?}");
+    }
+}
