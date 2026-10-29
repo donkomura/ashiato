@@ -8,6 +8,7 @@ members = [
     "crates/ashiato-duckdb",
     "crates/ashiato-nats",
     "crates/ashiato-cli",
+    "xtask",
 ]
 
 [workspace.package]
