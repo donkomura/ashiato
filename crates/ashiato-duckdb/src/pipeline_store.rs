@@ -81,6 +81,14 @@ impl PipelineStore {
         Ok(Self { connection })
     }
 
+    pub fn set_memory_limit(&self, limit: &str) -> Result<(), StoreError> {
+        todo!("{limit}")
+    }
+
+    pub fn memory_limit(&self) -> Result<String, StoreError> {
+        todo!()
+    }
+
     // The manifest is listed only when the run starts for the first time. Listing again on a
     // resumed run could reorder the files and make the same file_seq point at another file.
     pub fn start_run<E: From<StoreError>>(

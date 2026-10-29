@@ -209,3 +209,39 @@ fn failed_listing_saves_nothing() {
 
     assert_eq!(manifest, sample_manifest());
 }
+
+#[test]
+fn the_memory_limit_is_applied_to_the_database() {
+    let store = PipelineStore::open_in_memory().unwrap();
+
+    store.set_memory_limit("1GiB").unwrap();
+
+    assert_eq!(store.memory_limit().unwrap(), "1.0 GiB");
+}
+
+#[test]
+fn the_memory_limit_stays_at_the_default_of_duckdb_unless_it_is_set() {
+    let default: String = duckdb::Connection::open_in_memory()
+        .unwrap()
+        .query_row("SELECT current_setting('memory_limit')", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+
+    let store = PipelineStore::open_in_memory().unwrap();
+
+    assert_eq!(store.memory_limit().unwrap(), default);
+}
+
+#[test]
+fn an_invalid_memory_limit_is_an_error_of_duckdb() {
+    let store = PipelineStore::open_in_memory().unwrap();
+    let default = store.memory_limit().unwrap();
+
+    for limit in ["two gigabytes", "1GB'; SET memory_limit = '1MB"] {
+        let error = store.set_memory_limit(limit).unwrap_err();
+
+        assert!(matches!(error, StoreError::DuckDb(_)), "{error:?}");
+        assert_eq!(store.memory_limit().unwrap(), default);
+    }
+}

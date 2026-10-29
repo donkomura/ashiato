@@ -926,3 +926,37 @@ fn run_evaluates_the_rules_whose_time_bin_divides_the_batch() {
         ]
     );
 }
+
+fn run_with_memory_limit(case: &RunCase, limit: &str) -> Output {
+    ashiato()
+        .env("ASHIATO_DUCKDB_MEMORY_LIMIT", limit)
+        .arg("run")
+        .arg("--plan")
+        .arg(case.plan())
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn run_accepts_the_duckdb_memory_limit_from_the_environment() {
+    let case = RunCase::new();
+
+    let output = run_with_memory_limit(&case, "1GB");
+
+    assert!(output.status.success(), "{output:?}");
+    let lines = lines(&output.stdout);
+    assert_eq!(lines[0]["ingested_files"], 3, "{lines:#?}");
+    assert_eq!(of_type(&lines, "scenario_match").len(), 1, "{lines:#?}");
+}
+
+#[test]
+fn an_invalid_duckdb_memory_limit_in_the_environment_is_an_error() {
+    let case = RunCase::new();
+
+    let output = run_with_memory_limit(&case, "two gigabytes");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("ASHIATO_DUCKDB_MEMORY_LIMIT"), "{stderr}");
+    assert!(stderr.contains("two gigabytes"), "{stderr}");
+}
