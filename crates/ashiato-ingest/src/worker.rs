@@ -2,6 +2,7 @@ use std::collections::VecDeque;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
 use arrow_array::RecordBatch;
 use ashiato_pipeline::{
@@ -101,16 +102,17 @@ pub async fn run_worker(
     settings: WorkerSettings,
     metrics: Arc<WorkerMetrics>,
 ) -> Result<(), WorkerError> {
-    let _ = metrics;
     let decoders = Arc::new(Semaphore::new(settings.decode_threads.get()));
     let mut tasks = JoinSet::new();
     for assignment in assignments {
+        metrics.add_partition(&assignment.manifest.partition);
         tasks.spawn(ingest_partition(
             assignment,
             Arc::clone(&source),
             Arc::clone(&writer),
             Arc::clone(&decoders),
             settings,
+            Arc::clone(&metrics),
         ));
     }
     while let Some(result) = tasks.join_next().await {
@@ -168,13 +170,14 @@ async fn ingest_partition(
     writer: Arc<dyn PartitionWriter>,
     decoders: Arc<Semaphore>,
     settings: WorkerSettings,
+    metrics: Arc<WorkerMetrics>,
 ) -> Result<(), WorkerError> {
     let partition = &assignment.manifest.partition;
     let send = |message| {
-        let writer = &writer;
+        let (writer, metrics) = (&writer, &metrics);
         async move {
             writer
-                .put(message)
+                .put_timed(message, &metrics.send)
                 .await
                 .map_err(|source| WorkerError::Transport {
                     partition: partition.clone(),
@@ -201,6 +204,7 @@ async fn ingest_partition(
                 entry.clone(),
                 Arc::clone(&source),
                 Arc::clone(&decoders),
+                Arc::clone(&metrics),
             ));
             prefetched.0.push_back((entry, task));
         }
@@ -214,6 +218,10 @@ async fn ingest_partition(
         } else {
             0
         };
+        let events = rows
+            .as_ref()
+            .map_or(0, |rows| (rows.len() as u64).saturating_sub(skip));
+        let started = Instant::now();
         let messages = match rows {
             Ok(rows) => file_chunks(
                 &assignment,
@@ -232,9 +240,11 @@ async fn ingest_partition(
                 watermark,
             }],
         };
+        metrics.decode.since(started);
         for message in messages {
             send(message).await?;
         }
+        metrics.record_file(partition, digest.size, events);
     }
     let file_count = assignment.manifest.files.len() as u64;
     send(PartitionMessage::EndOfPartition {
@@ -249,7 +259,9 @@ async fn fetch_and_decode(
     entry: ManifestEntry,
     source: Arc<dyn FileSource>,
     decoders: Arc<Semaphore>,
+    metrics: Arc<WorkerMetrics>,
 ) -> Result<DecodedFile, WorkerError> {
+    let started = Instant::now();
     let content = source
         .read(&entry)
         .await
@@ -259,16 +271,20 @@ async fn fetch_and_decode(
             uri: entry.uri.clone(),
             source,
         })?;
+    metrics.fetch_wait.since(started);
     let permit = decoders
         .acquire_owned()
         .await
         .expect("the semaphore of the decode threads is never closed");
     tokio::task::spawn_blocking(move || {
         let _permit = permit;
-        DecodedFile {
+        let started = Instant::now();
+        let decoded = DecodedFile {
             digest: FileDigest::of(&content),
             rows: decompress(&content).and_then(|text| normalize_records(&text)),
-        }
+        };
+        metrics.decode.since(started);
+        decoded
     })
     .await
     .map_err(WorkerError::Task)

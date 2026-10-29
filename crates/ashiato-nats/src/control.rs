@@ -1,9 +1,10 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use ashiato_pipeline::{
-    CommittedPositions, ControlClient, ControlError, Manifest, ManifestEntry, ManifestPage,
-    ManifestRequest, PartitionId, Position, ResumeRequest, ResumeResponse, RunPlan, TransportError,
-    WorkerPlan, manifest_page, resume_response,
+    AnalyzerMetrics, CommittedPositions, ControlClient, ControlError, Manifest, ManifestEntry,
+    ManifestPage, ManifestRequest, PartitionId, Position, ResumeRequest, ResumeResponse, RunPlan,
+    TransportError, WorkerPlan, manifest_page, resume_response,
 };
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -39,6 +40,7 @@ pub struct ControlService {
     plans: Vec<WorkerPlan>,
     manifest: Manifest,
     committed: CommittedPositions,
+    metrics: Arc<AnalyzerMetrics>,
 }
 
 impl ControlService {
@@ -59,17 +61,20 @@ impl ControlService {
             plans,
             manifest,
             committed,
+            metrics: Arc::default(),
         })
     }
 
-    pub fn with_metrics(self, metrics: std::sync::Arc<ashiato_pipeline::AnalyzerMetrics>) -> Self {
-        let _ = metrics;
-        todo!()
+    pub fn with_metrics(self, metrics: Arc<AnalyzerMetrics>) -> Self {
+        Self { metrics, ..self }
     }
 
     fn answer(&self, request: &str, body: &[u8], limit: usize) -> Vec<u8> {
         let reply = match request {
-            PLAN => self.plan(body).map(|plan| encode(&plan)),
+            PLAN => self.plan(body).map(|plan| {
+                self.metrics.first_plan_response.mark();
+                encode(&plan)
+            }),
             MANIFEST => self.manifest_page(body, limit).map(|page| encode(&page)),
             RESUME => self.resume(body).map(|resume| encode(&resume)),
             _ => Err(format!("unknown control request {request}")),

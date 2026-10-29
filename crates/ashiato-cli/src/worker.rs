@@ -7,7 +7,9 @@ use ashiato_ingest::{
     run_worker,
 };
 use ashiato_nats::{NatsControl, NatsWriter};
-use ashiato_pipeline::{PartitionWriter, WorkerMetrics};
+use ashiato_pipeline::{PartitionWriter, WorkerMetrics, unix_ms};
+
+use crate::metrics::Reporter;
 
 #[derive(clap::Args)]
 pub(crate) struct IngestWorkerArgs {
@@ -29,6 +31,11 @@ pub(crate) fn ingest_worker(args: &IngestWorkerArgs) -> anyhow::Result<()> {
 }
 
 async fn work(args: &IngestWorkerArgs) -> anyhow::Result<()> {
+    let metrics = Arc::new(WorkerMetrics::new(args.worker_id));
+    let reporter = Reporter::every_second({
+        let metrics = Arc::clone(&metrics);
+        move |unix_ms| vec![metrics.line(unix_ms, false)]
+    });
     let client = async_nats::connect(&args.nats)
         .await
         .with_context(|| format!("failed to connect to {}", args.nats))?;
@@ -55,9 +62,11 @@ async fn work(args: &IngestWorkerArgs) -> anyhow::Result<()> {
             decode_threads: std::thread::available_parallelism().unwrap_or(NonZeroUsize::MIN),
             prefetch_files: DEFAULT_PREFETCH_FILES,
         },
-        Arc::<WorkerMetrics>::default(),
+        Arc::clone(&metrics),
     )
     .await?;
     client.flush().await?;
+    reporter.stop().await;
+    crate::metrics::write([metrics.line(unix_ms(), true)]);
     Ok(())
 }

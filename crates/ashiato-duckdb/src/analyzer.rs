@@ -1,13 +1,15 @@
 use std::collections::BTreeSet;
-use std::time::Duration;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use ashiato_core::AnalysisWindow;
 use ashiato_core::rule::SignalRule;
 use ashiato_pipeline::{
-    AckTiming, Admission, CommittedPositions, Delivery, DeliveryHandle, EventTime, IngestedFile,
-    Manifest, PartitionId, PartitionMessage, PartitionProgress, PartitionReader,
-    PartitionWatermark, Position, TransportError, admit, batch_start, file_id, global_watermark,
-    is_batch_complete, readable_partitions, recent_event_expiry,
+    AckTiming, Admission, AnalyzerCounts, AnalyzerMetrics, CommittedPositions, Delivery,
+    DeliveryHandle, EventTime, GlobalWatermark, IngestedFile, Manifest, PartitionId,
+    PartitionMessage, PartitionProgress, PartitionReader, PartitionWatermark, Position,
+    TransportError, admit, batch_start, file_id, global_watermark, is_batch_complete,
+    readable_partitions, recent_event_expiry,
 };
 use chrono::TimeDelta;
 use duckdb::OptionalExt;
@@ -30,11 +32,6 @@ pub struct AnalyzerSettings {
     pub read_since: EventTime,
     pub fetch_max: usize,
     pub commit_every: usize,
-}
-
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct AnalyzerMetrics {
-    pub pending_max_rows: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -122,8 +119,8 @@ pub struct Analyzer {
     uncommitted_messages: usize,
     queries: Option<BatchQueries>,
     max_skew: Option<TimeDelta>,
-    pending_rows: u64,
-    metrics: AnalyzerMetrics,
+    counts: AnalyzerCounts,
+    metrics: Arc<AnalyzerMetrics>,
     committed_positions: Option<CommittedPositions>,
 }
 
@@ -137,6 +134,15 @@ impl Analyzer {
             store
                 .connection
                 .query_row("SELECT count(*) FROM pending", [], |row| row.get(0))?;
+        let ingested_files =
+            store
+                .connection
+                .query_row("SELECT count(*) FROM ingested_files", [], |row| row.get(0))?;
+        let manifest_files = manifest
+            .partitions
+            .iter()
+            .map(|partition| partition.files.len() as u64)
+            .sum();
         let mut partitions = Vec::with_capacity(manifest.partitions.len());
         for (index, partition) in manifest.partitions.into_iter().enumerate() {
             let saved = store
@@ -185,10 +191,14 @@ impl Analyzer {
             uncommitted_messages: 0,
             queries: None,
             max_skew: None,
-            pending_rows,
-            metrics: AnalyzerMetrics {
+            counts: AnalyzerCounts {
+                manifest_files,
+                ingested_files,
+                global_watermark: None,
+                pending_rows,
                 pending_max_rows: pending_rows,
             },
+            metrics: Arc::default(),
             committed_positions: None,
         })
     }
@@ -213,9 +223,9 @@ impl Analyzer {
         analyzer
     }
 
-    pub fn with_metrics(self, metrics: std::sync::Arc<ashiato_pipeline::AnalyzerMetrics>) -> Self {
-        let _ = metrics;
-        todo!()
+    pub fn with_metrics(self, metrics: Arc<AnalyzerMetrics>) -> Self {
+        metrics.set_counts(self.counts);
+        Self { metrics, ..self }
     }
 
     fn share_committed_positions(&self) {
@@ -238,10 +248,6 @@ impl Analyzer {
 
     pub fn into_store(self) -> PipelineStore {
         self.store
-    }
-
-    pub fn metrics(&self) -> AnalyzerMetrics {
-        self.metrics
     }
 
     pub fn resume_positions(&self) -> Vec<Position> {
@@ -296,6 +302,7 @@ impl Analyzer {
             .iter()
             .map(|index| self.partitions[*index].id.clone())
             .collect();
+        let started = Instant::now();
         let fetched = if self.uncommitted_messages > 0 {
             reader
                 .fetch_ready_within(&partitions, self.settings.fetch_max, IDLE_COMMIT_WAIT)
@@ -306,6 +313,7 @@ impl Analyzer {
                 .await
                 .map(Some)
         };
+        self.metrics.fetch_wait.since(started);
         let Some((chosen, deliveries)) = fetched.map_err(AnalyzerError::Receive)? else {
             self.commit_and_ack(reader).await?;
             self.finalize_batches()?;
@@ -447,8 +455,10 @@ impl Analyzer {
     // The received events, the files and the positions are committed in one transaction, so
     // that a restart neither counts a message twice nor misses one.
     pub fn commit(&mut self) -> Result<Vec<DeliveryHandle>, AnalyzerError> {
+        let started = Instant::now();
         let transaction = self.store.connection.transaction()?;
         let mut added_rows = 0;
+        let mut added_files = 0;
         for received in self.received.drain(..) {
             match received {
                 Received::Events {
@@ -497,6 +507,7 @@ impl Analyzer {
                     file,
                     error,
                 } => {
+                    added_files += 1;
                     transaction.execute(
                         "INSERT INTO ingested_files VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         duckdb::params![
@@ -542,8 +553,9 @@ impl Analyzer {
             )?;
         }
         transaction.commit()?;
-        self.pending_rows += added_rows as u64;
-        self.metrics.pending_max_rows = self.metrics.pending_max_rows.max(self.pending_rows);
+        self.counts.pending_rows += added_rows as u64;
+        self.counts.pending_max_rows = self.counts.pending_max_rows.max(self.counts.pending_rows);
+        self.counts.ingested_files += added_files;
         for index in std::mem::take(&mut self.changed) {
             let partition = &mut self.partitions[index];
             partition.progress.committed = partition.progress.next;
@@ -552,10 +564,20 @@ impl Analyzer {
         }
         self.share_committed_positions();
         self.uncommitted_messages = 0;
+        if self
+            .partitions
+            .iter()
+            .all(|partition| partition.progress.end_committed)
+        {
+            self.metrics.last_end_committed.mark();
+        }
+        self.metrics.set_counts(self.counts);
+        self.metrics.commit.since(started);
         Ok(std::mem::take(&mut self.acks))
     }
 
     pub fn finalize_batches(&mut self) -> Result<Vec<(EventTime, EventTime)>, AnalyzerError> {
+        let started = Instant::now();
         let global = global_watermark(
             self.partitions
                 .iter()
@@ -563,6 +585,16 @@ impl Analyzer {
             self.settings.read_since,
             self.settings.allowed_lateness,
         );
+        self.counts.global_watermark = match global {
+            GlobalWatermark::At(watermark) => Some(watermark),
+            // Once every partition has ended, the global watermark has no bound, and the furthest
+            // watermark that the partitions reached tells how far the data went.
+            GlobalWatermark::Complete => self
+                .partitions
+                .iter()
+                .filter_map(|partition| partition.committed_watermark)
+                .max(),
+        };
         let mut finalized = Vec::new();
         loop {
             let earliest: Option<i64> = self.store.connection.query_row(
@@ -591,9 +623,11 @@ impl Analyzer {
                 [timestamp(start), timestamp(end)],
             )?;
             transaction.commit()?;
-            self.pending_rows -= removed_rows as u64;
+            self.counts.pending_rows -= removed_rows as u64;
             finalized.push((start, end));
         }
+        self.metrics.set_counts(self.counts);
+        self.metrics.batch.since(started);
         Ok(finalized)
     }
 

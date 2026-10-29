@@ -9,17 +9,20 @@ use ashiato_core::output::{OutputRecord, PipelineRunRecord, RunRecord};
 use ashiato_core::rule::{Rule, SignalRule};
 use ashiato_core::scoring::{ScoringSettings, score};
 use ashiato_core::validate::validate_streaming;
-use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerMetrics, AnalyzerSettings, PipelineStore};
+use ashiato_duckdb::{Analyzer, AnalyzerError, AnalyzerSettings, PipelineStore};
 use ashiato_ingest::{
     DEFAULT_PREFETCH_FILES, FileSource, ListScope, LocalSource, PartitionAssignment, S3Location,
     S3Source, WorkerSettings, list_local, run_workers, trail_root,
 };
 use ashiato_nats::{ControlService, EventStream, max_ack_pending, serve_control, validate_run_id};
 use ashiato_pipeline::{
-    CommittedPositions, Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan, SourceLocation,
-    WorkerMetrics, assign_partitions, partition_channels, validate_distributed,
+    AnalyzerMetrics, CommittedPositions, Manifest, PartitionId, PlacementMode, RuleOrigin, RunPlan,
+    SourceLocation, WorkerMetrics, assign_partitions, partition_channels, unix_ms,
+    validate_distributed,
 };
+use serde_json::Value;
 
+use crate::metrics::Reporter;
 use crate::{DATABASE_FILE, load_catalog_from, report_warning, write_output};
 
 const FETCH_MAX: usize = 16;
@@ -43,6 +46,12 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()?;
+    let metrics = Arc::new(AnalyzerMetrics::default());
+    let reporter = {
+        let _runtime = runtime.enter();
+        let metrics = Arc::clone(&metrics);
+        Reporter::every_second(move |unix_ms| vec![metrics.line(unix_ms, false)])
+    };
     let source = runtime.block_on(PlanSource::open(&plan))?;
     let rule_dirs = rule_dirs(&plan)?;
     let catalog = load_catalog_from(&rule_dirs, &plan.ruleset_dirs)?;
@@ -74,16 +83,14 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
                 .all(|skipped| skipped.rule_id != rule.id)
         })
         .collect();
-    let (store, metrics) = match plan.placement.mode {
-        PlacementMode::SingleProcess => runtime.block_on(stream(
-            &plan,
-            store,
-            manifest,
-            signal_rules,
-            source.file_source(),
-        ))?,
+    let analyzer = open_analyzer(&plan, store, manifest.clone(), signal_rules)?
+        .with_metrics(Arc::clone(&metrics));
+    let store = match plan.placement.mode {
+        PlacementMode::SingleProcess => {
+            runtime.block_on(stream(&plan, analyzer, manifest, source.file_source()))?
+        }
         PlacementMode::Distributed => {
-            runtime.block_on(analyze_distributed(&plan, store, manifest, signal_rules))?
+            runtime.block_on(analyze_distributed(&plan, analyzer, manifest, &metrics))?
         }
     };
 
@@ -96,6 +103,7 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         not_streamable,
         &plan.context,
     );
+    metrics.correlated.mark();
     analysis.attach_refs(&selection.refs);
     for warning in &analysis.warnings {
         report_warning(warning);
@@ -124,20 +132,9 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         late_events: counts.late_events,
     });
     write_output(&run, analysis, scores, args.emit_signals, args.summary)?;
-    report_metrics(metrics);
+    runtime.block_on(reporter.stop());
+    crate::metrics::write([metrics.line(unix_ms(), true)]);
     Ok(())
-}
-
-// The metrics go to stderr so that stdout holds only the results of the analysis (14.1.5 節).
-// Later metrics are added as fields of the same line.
-fn report_metrics(metrics: AnalyzerMetrics) {
-    eprintln!(
-        "{}",
-        serde_json::json!({
-            "metrics": "run",
-            "pending_max_rows": metrics.pending_max_rows,
-        })
-    );
 }
 
 // The run id names the subjects and the stream of NATS, so it is checked before the workspace
@@ -215,13 +212,11 @@ fn rule_dirs(plan: &RunPlan) -> anyhow::Result<Vec<PathBuf>> {
 
 async fn stream(
     plan: &RunPlan,
-    store: PipelineStore,
+    mut analyzer: Analyzer,
     manifest: Manifest,
-    signal_rules: Vec<SignalRule>,
     source: Arc<dyn FileSource>,
-) -> anyhow::Result<(PipelineStore, AnalyzerMetrics)> {
+) -> anyhow::Result<PipelineStore> {
     let allowed_lateness = plan.pipeline.allowed_lateness.to_time_delta();
-    let mut analyzer = open_analyzer(plan, store, manifest.clone(), signal_rules)?;
     let assignments: Vec<PartitionAssignment> = manifest
         .partitions
         .into_iter()
@@ -243,6 +238,9 @@ async fn stream(
         .iter()
         .map(|assignment| assignment.manifest.partition.clone())
         .collect();
+    let metrics: Vec<Arc<WorkerMetrics>> = (0..plan.placement.ingest_workers.get())
+        .map(|worker_id| Arc::new(WorkerMetrics::new(worker_id)))
+        .collect();
     let workers = assign_partitions(&partitions, plan.placement.ingest_workers)
         .into_iter()
         .map(|indexes| {
@@ -251,8 +249,12 @@ async fn stream(
                 .map(|index| assignments[index].clone())
                 .collect()
         })
-        .map(|assignments| (assignments, Arc::<WorkerMetrics>::default()))
+        .zip(metrics.iter().cloned())
         .collect();
+    let reporter = Reporter::every_second({
+        let metrics = metrics.clone();
+        move |unix_ms| worker_lines(&metrics, unix_ms, false)
+    });
     let worker = tokio::spawn(run_workers(
         workers,
         source,
@@ -282,10 +284,18 @@ async fn stream(
         (Err(AnalyzerError::Closed(_)), Err(error)) | (Ok(()), Err(error)) => Err(error.into()),
         (Err(error), _) => Err(error.into()),
         (Ok(()), Ok(())) => {
-            let metrics = analyzer.metrics();
-            Ok((analyzer.into_store(), metrics))
+            reporter.stop().await;
+            crate::metrics::write(worker_lines(&metrics, unix_ms(), true));
+            Ok(analyzer.into_store())
         }
     }
+}
+
+fn worker_lines(metrics: &[Arc<WorkerMetrics>], unix_ms: u64, is_final: bool) -> Vec<Value> {
+    metrics
+        .iter()
+        .map(|worker| worker.line(unix_ms, is_final))
+        .collect()
 }
 
 fn open_analyzer(
@@ -315,10 +325,10 @@ fn open_analyzer(
 // the run from the control requests that this process answers (7.4 節).
 async fn analyze_distributed(
     plan: &RunPlan,
-    store: PipelineStore,
+    analyzer: Analyzer,
     manifest: Manifest,
-    signal_rules: Vec<SignalRule>,
-) -> anyhow::Result<(PipelineStore, AnalyzerMetrics)> {
+    metrics: &Arc<AnalyzerMetrics>,
+) -> anyhow::Result<PipelineStore> {
     let url = plan
         .placement
         .nats_url
@@ -335,9 +345,8 @@ async fn analyze_distributed(
     let events =
         EventStream::create(client.clone(), &plan.run_id, partitions.len(), &plan.broker).await?;
     let committed = CommittedPositions::default();
-    let mut analyzer = open_analyzer(plan, store, manifest.clone(), signal_rules)?
-        .with_committed_positions(committed.clone());
-    let service = ControlService::new(plan, manifest, committed)?;
+    let mut analyzer = analyzer.with_committed_positions(committed.clone());
+    let service = ControlService::new(plan, manifest, committed)?.with_metrics(Arc::clone(metrics));
     let server = serve_control(client.clone(), &plan.run_id, service).await?;
     let mut reader = events
         .reader(
@@ -351,8 +360,7 @@ async fn analyze_distributed(
     analyzer.run(&mut reader).await?;
     drop(server);
     events.delete().await?;
-    let metrics = analyzer.metrics();
-    Ok((analyzer.into_store(), metrics))
+    Ok(analyzer.into_store())
 }
 
 // Each worker has its own decode threads, so the CPUs are divided among the workers.

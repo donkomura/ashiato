@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use async_trait::async_trait;
 
@@ -38,13 +38,17 @@ pub struct Delivery {
 #[async_trait]
 pub trait PartitionWriter: Send + Sync {
     async fn put(&self, message: PartitionMessage) -> Result<(), TransportError>;
+    // Like put, and adds the time of the send to times. A transport that can tell the wait for
+    // room in a full partition from the send itself counts the wait as rejected_wait.
     async fn put_timed(
         &self,
         message: PartitionMessage,
         times: &SendTimes,
     ) -> Result<(), TransportError> {
-        let _ = (message, times);
-        todo!()
+        let started = Instant::now();
+        let sent = self.put(message).await;
+        times.publish_wait.since(started);
+        sent
     }
 }
 

@@ -1,13 +1,15 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::task::Poll;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::error::TrySendError;
 
 use crate::{
     Delivery, DeliveryHandle, PartitionId, PartitionMessage, PartitionReader, PartitionWriter,
-    TransportError,
+    SendTimes, TransportError,
 };
 
 #[derive(Clone)]
@@ -45,15 +47,32 @@ pub fn partition_channels(
 #[async_trait]
 impl PartitionWriter for ChannelWriter {
     async fn put(&self, message: PartitionMessage) -> Result<(), TransportError> {
+        self.put_timed(message, &SendTimes::default()).await
+    }
+
+    async fn put_timed(
+        &self,
+        message: PartitionMessage,
+        times: &SendTimes,
+    ) -> Result<(), TransportError> {
         let partition = message.partition().clone();
         let sender = self
             .senders
             .get(&partition)
             .ok_or_else(|| TransportError::UnknownPartition(partition.clone()))?;
-        sender
-            .send(message)
-            .await
-            .map_err(|_| TransportError::Closed(partition))
+        let started = Instant::now();
+        match sender.try_send(message) {
+            Ok(()) => {
+                times.publish_wait.since(started);
+                Ok(())
+            }
+            Err(TrySendError::Full(message)) => {
+                let sent = sender.send(message).await;
+                times.rejected_wait.since(started);
+                sent.map_err(|_| TransportError::Closed(partition))
+            }
+            Err(TrySendError::Closed(_)) => Err(TransportError::Closed(partition)),
+        }
     }
 }
 

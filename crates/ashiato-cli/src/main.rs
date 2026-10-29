@@ -21,6 +21,7 @@ use ashiato_testkit::fixture::{Fixture, FixtureFile, builtin_fixtures};
 use chrono::{DateTime, NaiveDate, NaiveTime, Utc};
 use clap::{Parser, Subcommand};
 
+mod metrics;
 mod run;
 mod worker;
 

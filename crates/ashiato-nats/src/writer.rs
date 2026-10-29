@@ -1,4 +1,6 @@
-use ashiato_pipeline::{PartitionMessage, PartitionWriter, TransportError};
+use std::time::Instant;
+
+use ashiato_pipeline::{PartitionMessage, PartitionWriter, SendTimes, TransportError};
 use async_nats::jetstream::context::{PublishError, PublishErrorKind};
 use async_nats::jetstream::{self, Context};
 use async_trait::async_trait;
@@ -37,9 +39,11 @@ impl NatsWriter {
         &self,
         message: &PartitionMessage,
         part: EncodedMessage,
+        times: &SendTimes,
     ) -> Result<(), NatsError> {
         let mut backoff = Backoff::new(self.retry);
         loop {
+            let started = Instant::now();
             let sent = self
                 .context
                 .publish_with_headers(
@@ -53,11 +57,17 @@ impl NatsWriter {
                 Err(error) => Err(error),
             };
             let Err(error) = acknowledged else {
+                times.publish_wait.since(started);
                 return Ok(());
             };
             match refusal(&error) {
-                Refusal::Full => backoff.while_refused().await,
-                Refusal::Transient if backoff.after_failure().await => {}
+                Refusal::Full => {
+                    backoff.while_refused().await;
+                    times.rejected_wait.since(started);
+                }
+                Refusal::Transient if backoff.after_failure().await => {
+                    times.publish_wait.since(started);
+                }
                 Refusal::Transient | Refusal::Permanent => {
                     return Err(NatsError::Publish {
                         partition: message.partition().clone(),
@@ -73,10 +83,18 @@ impl NatsWriter {
 #[async_trait]
 impl PartitionWriter for NatsWriter {
     async fn put(&self, message: PartitionMessage) -> Result<(), TransportError> {
+        self.put_timed(message, &SendTimes::default()).await
+    }
+
+    async fn put_timed(
+        &self,
+        message: PartitionMessage,
+        times: &SendTimes,
+    ) -> Result<(), TransportError> {
         let parts = encode_within(&self.run_id, &message, self.max_message_size)
             .map_err(NatsError::from)?;
         for part in parts {
-            self.publish(&message, part).await?;
+            self.publish(&message, part, times).await?;
         }
         Ok(())
     }

@@ -13,7 +13,7 @@ mod batch_queries;
 pub mod fixture;
 mod pipeline_store;
 
-pub use analyzer::{Analyzer, AnalyzerError, AnalyzerMetrics, AnalyzerSettings};
+pub use analyzer::{Analyzer, AnalyzerError, AnalyzerSettings};
 pub use backend::DuckDbBackend;
 pub use batch_queries::BatchQueryError;
 pub use pipeline_store::{IngestCounts, PipelineStore, StoreError};
