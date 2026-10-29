@@ -49,8 +49,8 @@ const DELIVERY_MINUTES: f64 = 5.0;
 const MAX_INTERVAL_MINUTES: f64 = 24.0 * 60.0;
 // Events in a file at scale 1.0, chosen so that A is a few hundred MB and B about 2 GB
 // after compression.
-const A_EVENTS_PER_FILE: f64 = 20.0;
-const B_EVENTS_PER_FILE: f64 = 100.0;
+const A_EVENTS_PER_FILE: f64 = 25.0;
+const B_EVENTS_PER_FILE: f64 = 155.0;
 const HEAVY_FACTOR: u64 = 10;
 // Every file of B holds the same number of events, so that the partitions stay equal, and a
 // file must have room for the scripted events delivered in it (at most five).

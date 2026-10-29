@@ -18,6 +18,7 @@ pub(crate) struct Call<'a> {
     pub(crate) response: Value,
     pub(crate) read_only: bool,
     pub(crate) resources: Option<Value>,
+    pub(crate) additional: Option<Value>,
     pub(crate) data_event: bool,
 }
 
@@ -33,6 +34,7 @@ impl<'a> Call<'a> {
             response: Value::Null,
             read_only: true,
             resources: None,
+            additional: None,
             data_event: false,
         }
     }
@@ -74,6 +76,9 @@ impl<'a> Call<'a> {
         });
         if let Some(resources) = self.resources {
             record["resources"] = resources;
+        }
+        if let Some(additional) = self.additional {
+            record["additionalEventData"] = additional;
         }
         record
     }

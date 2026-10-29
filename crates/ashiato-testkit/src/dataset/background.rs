@@ -5,6 +5,7 @@ use super::event::{Call, SDK_AGENT, assumed_role, derived_id, iam_user, user_acc
 use super::rng::{SplitMix64, hash};
 
 const USERS: u64 = 3;
+const S3_REQUEST_ID_LENGTH: usize = 76;
 const APP_ROLE: &str = "app-server";
 // CloudTrail delivers the events of about the last five minutes in each file.
 const DELIVERY_WINDOW_SECONDS: u64 = 300;
@@ -114,6 +115,8 @@ fn object_call<'a>(
         time.format("%Y/%m/%d/%H"),
         rng.next_u64()
     );
+    let size = rng.below(1 << 20);
+    let (bytes_in, bytes_out) = if read_only { (0, 0) } else { (size, 0) };
     Call {
         params: json!({
             "bucketName": bucket,
@@ -125,6 +128,14 @@ fn object_call<'a>(
             { "type": "AWS::S3::Object", "ARN": format!("arn:aws:s3:::{bucket}/{key}") },
             { "type": "AWS::S3::Bucket", "ARN": format!("arn:aws:s3:::{bucket}") },
         ])),
+        additional: Some(json!({
+            "SignatureVersion": "SigV4",
+            "CipherSuite": "TLS_AES_128_GCM_SHA256",
+            "bytesTransferredIn": bytes_in,
+            "AuthenticationMethod": "AuthHeader",
+            "x-amz-id-2": rng.alphanumeric(S3_REQUEST_ID_LENGTH),
+            "bytesTransferredOut": bytes_out,
+        })),
         data_event: true,
         ..call
     }
