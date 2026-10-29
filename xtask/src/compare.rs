@@ -1,5 +1,8 @@
 use std::path::Path;
 
+use ashiato_nats::stream_name;
+use duckdb::Connection;
+
 // The tables of 14.1.3 節 that must match the reference run row for row.
 pub const TABLES: [&str; 8] = [
     "signals",
@@ -27,7 +30,11 @@ pub struct WorkspaceComparison {
 
 impl WorkspaceComparison {
     pub fn matches(&self) -> bool {
-        todo!()
+        self.pending_rows == 0
+            && self
+                .tables
+                .iter()
+                .all(|table| table.only_in_reference == 0 && table.only_in_run == 0)
     }
 }
 
@@ -40,24 +47,58 @@ pub struct Comparison {
 
 impl Comparison {
     pub fn passed(&self) -> bool {
-        todo!()
+        self.output_matches && self.workspace.matches() && self.stream_removed
     }
 }
 
+// Every run of dataset A reports signals, so an empty reference output means that the reference
+// run itself failed, and runs that also print nothing would match it without proving anything.
 pub fn outputs_match(reference: &[u8], run: &[u8]) -> bool {
-    let _ = (reference, run);
-    todo!()
+    !reference.is_empty() && reference == run
 }
 
 pub fn compare_workspaces(
     reference: &Path,
     run: &Path,
 ) -> Result<WorkspaceComparison, duckdb::Error> {
-    let _ = (reference, run);
-    todo!()
+    let connection = Connection::open_in_memory()?;
+    connection.execute_batch(&format!(
+        "ATTACH {} AS ref (READ_ONLY); ATTACH {} AS run (READ_ONLY);",
+        literal(reference),
+        literal(run)
+    ))?;
+    let count = |sql: &str| connection.query_row(sql, [], |row| row.get::<_, u64>(0));
+    let tables = TABLES
+        .iter()
+        .map(|table| {
+            Ok(TableDifference {
+                table: (*table).to_owned(),
+                only_in_reference: count(&format!(
+                    "SELECT count(*) FROM (SELECT * FROM ref.{table} EXCEPT ALL SELECT * FROM run.{table})"
+                ))?,
+                only_in_run: count(&format!(
+                    "SELECT count(*) FROM (SELECT * FROM run.{table} EXCEPT ALL SELECT * FROM ref.{table})"
+                ))?,
+            })
+        })
+        .collect::<Result<_, duckdb::Error>>()?;
+    Ok(WorkspaceComparison {
+        tables,
+        pending_rows: count("SELECT count(*) FROM run.pending")?,
+    })
 }
 
+fn literal(path: &Path) -> String {
+    format!("'{}'", path.to_string_lossy().replace('\'', "''"))
+}
+
+// The NATS configuration of compose.rs defines no accounts, so JetStream keeps every stream in a
+// directory of its own under the global account $G of the file store.
 pub fn stream_left(nats_store: &Path, run_id: &str) -> bool {
-    let _ = (nats_store, run_id);
-    todo!()
+    nats_store
+        .join("jetstream")
+        .join("$G")
+        .join("streams")
+        .join(stream_name(run_id))
+        .exists()
 }
