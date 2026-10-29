@@ -3698,9 +3698,12 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ashiato-pipeline",
  "ashiato-testkit",
+ "chrono",
  "clap",
  "serde",
+ "serde_json",
  "serde_yaml",
  "tempfile",
  "thiserror",
