@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::io::Write;
 use std::num::NonZeroUsize;
@@ -12,10 +13,12 @@ use serde_json::{Value, json};
 
 use crate::log_file::LogFile;
 use rng::{SplitMix64, hash, mix};
+use scenario::{Contents, RawFile};
 
 mod background;
 mod event;
 mod rng;
+mod scenario;
 
 const ORG_ID: &str = "o-ashiato0001";
 const ACCOUNTS: [&str; 4] = [
@@ -49,6 +52,9 @@ const MAX_INTERVAL_MINUTES: f64 = 24.0 * 60.0;
 const A_EVENTS_PER_FILE: f64 = 20.0;
 const B_EVENTS_PER_FILE: f64 = 100.0;
 const HEAVY_FACTOR: u64 = 10;
+// Every file of B holds the same number of events, so that the partitions stay equal, and a
+// file must have room for the scripted events delivered in it (at most five).
+const B_MIN_EVENTS_PER_FILE: u64 = 8;
 const UNIQUE_LENGTH: usize = 16;
 const SUMMARY_FILE: &str = "dataset.json";
 
@@ -139,13 +145,23 @@ struct Layout {
     heavy: Option<Partition>,
     files: Vec<DateTime<Utc>>,
     events_per_file: u64,
+    same_files_everywhere: bool,
 }
 
 struct FilePlan {
     partition: Partition,
     log: LogFile,
-    seed: u64,
-    background: u64,
+    content: Content,
+}
+
+#[derive(Clone)]
+enum Content {
+    Events {
+        seed: u64,
+        background: u64,
+        scripted: Vec<Value>,
+    },
+    Raw(Vec<u8>),
 }
 
 struct Written {
@@ -159,9 +175,10 @@ pub fn generate(spec: &DatasetSpec, out_dir: &Path) -> Result<DatasetSummary, Da
     }
     prepare(out_dir)?;
     let layout = Layout::new(spec);
-    let plans = layout.plans(spec.seed);
+    let contents = scenario::contents(spec.kind, spec.seed);
+    let plans = layout.plans(spec.seed, &contents);
     let written = write_files(out_dir, &plans, spec.kind == DatasetKind::ANoDataEvents)?;
-    let summary = layout.summary(spec, &plans, &written);
+    let summary = layout.summary(spec, &plans, &written, contents.expected);
     let path = out_dir.join(SUMMARY_FILE);
     let content = serde_json::to_vec_pretty(&summary).expect("a summary is serializable");
     fs::write(&path, content).map_err(|source| DatasetError::Io { path, source })?;
@@ -211,9 +228,13 @@ impl Layout {
             DatasetKind::A | DatasetKind::ANoDataEvents => A_EVENTS_PER_FILE,
             DatasetKind::B => B_EVENTS_PER_FILE,
         };
-        let events_per_file = (per_file * spec.scale * interval / DELIVERY_MINUTES)
+        let mut events_per_file = (per_file * spec.scale * interval / DELIVERY_MINUTES)
             .round()
             .max(1.0) as u64;
+        let same_files_everywhere = spec.kind == DatasetKind::B;
+        if same_files_everywhere {
+            events_per_file = events_per_file.max(B_MIN_EVENTS_PER_FILE);
+        }
         let interval = TimeDelta::minutes(interval as i64);
         let files = std::iter::successors(Some(baseline_since() + interval), |time| {
             Some(*time + interval).filter(|next| *next < until())
@@ -239,24 +260,71 @@ impl Layout {
             heavy,
             files,
             events_per_file,
+            same_files_everywhere,
         }
     }
 
-    fn plans(&self, seed: u64) -> Vec<FilePlan> {
-        let mut plans = Vec::new();
+    fn events_per_file(&self, partition: Partition) -> u64 {
+        if Some(partition) == self.heavy {
+            HEAVY_FACTOR * self.events_per_file
+        } else {
+            self.events_per_file
+        }
+    }
+
+    // Scripted events are delivered in the files of the regular deliveries when their times
+    // meet, and in files of their own otherwise. B gives every partition a file at each of
+    // those times, so that all partitions have the same files and events.
+    fn plans(&self, seed: u64, contents: &Contents) -> Vec<FilePlan> {
+        let scripted_times: BTreeSet<DateTime<Utc>> = if self.same_files_everywhere {
+            contents
+                .events
+                .iter()
+                .map(|event| event.file_time)
+                .collect()
+        } else {
+            BTreeSet::new()
+        };
+        let mut files: BTreeMap<(Partition, DateTime<Utc>), Vec<Value>> = BTreeMap::new();
         for &partition in &self.partitions {
-            if Some(partition) == self.empty {
-                continue;
-            }
-            let background = if Some(partition) == self.heavy {
-                HEAVY_FACTOR * self.events_per_file
-            } else {
-                self.events_per_file
-            };
-            for &time in &self.files {
-                plans.push(FilePlan::new(seed, partition, time, background));
+            if Some(partition) != self.empty {
+                for &time in self.files.iter().chain(&scripted_times) {
+                    files.entry((partition, time)).or_default();
+                }
             }
         }
+        for event in &contents.events {
+            files
+                .entry((event.partition, event.file_time))
+                .or_default()
+                .push(event.record.clone());
+        }
+        let mut plans: Vec<FilePlan> = files
+            .into_iter()
+            .map(|((partition, time), scripted)| {
+                let background = self
+                    .events_per_file(partition)
+                    .saturating_sub(scripted.len() as u64);
+                FilePlan::events(seed, partition, time, background, scripted)
+            })
+            .collect();
+        if let Some(trail) = &contents.account_trail {
+            let copies: Vec<FilePlan> = plans
+                .iter()
+                .filter(|plan| {
+                    plan.partition == trail.partition
+                        && (trail.start..=trail.end).contains(&plan.log.time)
+                })
+                .map(FilePlan::account_trail_copy)
+                .collect();
+            plans.extend(copies);
+        }
+        plans.extend(
+            contents
+                .raw_files
+                .iter()
+                .map(|raw| FilePlan::raw(seed, raw)),
+        );
         plans
     }
 
@@ -265,6 +333,7 @@ impl Layout {
         spec: &DatasetSpec,
         plans: &[FilePlan],
         written: &[Written],
+        expected_scenarios: Vec<ExpectedScenario>,
     ) -> DatasetSummary {
         let mut partitions: Vec<PartitionSummary> = self
             .partitions
@@ -315,37 +384,73 @@ impl Layout {
             allowed_lateness: ALLOWED_LATENESS.to_owned(),
             max_skew: MAX_SKEW.to_owned(),
             partitions,
-            expected_scenarios: Vec::new(),
+            expected_scenarios,
         }
     }
 }
 
 impl FilePlan {
-    fn new(seed: u64, partition: Partition, time: DateTime<Utc>, background: u64) -> Self {
-        let seed = mix(&[
-            seed,
-            hash(partition.account),
-            hash(partition.region),
-            time.timestamp() as u64,
-        ]);
-        let unique = SplitMix64::new(mix(&[seed, hash("unique")])).alphanumeric(UNIQUE_LENGTH);
+    fn events(
+        seed: u64,
+        partition: Partition,
+        time: DateTime<Utc>,
+        background: u64,
+        scripted: Vec<Value>,
+    ) -> Self {
+        let seed = file_seed(seed, partition, time);
         Self {
             partition,
-            log: LogFile {
-                org_id: Some(ORG_ID.to_owned()),
-                unique,
-                ..LogFile::new(partition.account, partition.region, time)
+            log: organization_trail_file(seed, partition, time),
+            content: Content::Events {
+                seed,
+                background,
+                scripted,
             },
-            seed,
-            background,
+        }
+    }
+
+    fn raw(seed: u64, raw: &RawFile) -> Self {
+        let seed = file_seed(seed, raw.partition, raw.file_time);
+        Self {
+            partition: raw.partition,
+            log: organization_trail_file(seed, raw.partition, raw.file_time),
+            content: Content::Raw(raw.content.clone()),
+        }
+    }
+
+    // The account trail delivers the same events a minute after the organization trail.
+    fn account_trail_copy(&self) -> Self {
+        let Content::Events { seed, .. } = &self.content else {
+            unreachable!("only files of events are copied to the account trail");
+        };
+        let unique =
+            SplitMix64::new(mix(&[*seed, hash("account trail")])).alphanumeric(UNIQUE_LENGTH);
+        Self {
+            partition: self.partition,
+            log: LogFile {
+                org_id: None,
+                unique,
+                time: self.log.time + TimeDelta::minutes(1),
+                ..self.log.clone()
+            },
+            content: self.content.clone(),
         }
     }
 
     fn content(&self, no_data_events: bool) -> (Vec<u8>, u64) {
-        let mut rng = SplitMix64::new(self.seed);
+        let (seed, background, scripted) = match &self.content {
+            Content::Raw(content) => return (content.clone(), 0),
+            Content::Events {
+                seed,
+                background,
+                scripted,
+            } => (*seed, *background, scripted),
+        };
+        let mut rng = SplitMix64::new(seed);
         let Partition { account, region } = self.partition;
-        let mut records: Vec<Value> = (0..self.background)
+        let mut records: Vec<Value> = (0..background)
             .map(|_| background::record(&mut rng, account, region, self.log.time))
+            .chain(scripted.iter().cloned())
             .collect();
         if no_data_events {
             records.retain(|record| !is_s3_data_event(record));
@@ -355,6 +460,23 @@ impl FilePlan {
         let json =
             serde_json::to_vec(&json!({ "Records": records })).expect("records are serializable");
         (gzip(&json), events)
+    }
+}
+
+fn file_seed(seed: u64, partition: Partition, time: DateTime<Utc>) -> u64 {
+    mix(&[
+        seed,
+        hash(partition.account),
+        hash(partition.region),
+        time.timestamp() as u64,
+    ])
+}
+
+fn organization_trail_file(seed: u64, partition: Partition, time: DateTime<Utc>) -> LogFile {
+    LogFile {
+        org_id: Some(ORG_ID.to_owned()),
+        unique: SplitMix64::new(mix(&[seed, hash("unique")])).alphanumeric(UNIQUE_LENGTH),
+        ..LogFile::new(partition.account, partition.region, time)
     }
 }
 
