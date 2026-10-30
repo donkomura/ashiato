@@ -2,6 +2,7 @@ pub mod binary;
 pub mod cli;
 pub mod compare;
 pub mod compose;
+pub mod correctness;
 pub mod docker;
 pub mod metrics;
 pub mod plan;
