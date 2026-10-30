@@ -16,11 +16,12 @@ use ashiato_pipeline::{
     PartitionReader, PartitionWriter, Position, SendTimes, TransportError, partition_channels,
 };
 use ashiato_testkit::nats::Nats;
-use async_nats::jetstream::consumer::{AckPolicy, DeliverPolicy};
+use async_nats::jetstream::consumer::{AckPolicy, DeliverPolicy, PullConsumer};
 use async_nats::jetstream::stream::{DiscardPolicy, RetentionPolicy, StorageType};
 use async_trait::async_trait;
 use chrono::TimeDelta;
 use common::{LATENESS_MINUTES, Workspace, assignments, at, fixture, worker_settings};
+use futures_util::StreamExt;
 
 const RUN_ID: &str = "case-1";
 const MAX_MESSAGE_SIZE: usize = 1 << 20;
@@ -161,6 +162,77 @@ async fn stream_messages(stream: &EventStream) -> u64 {
         .unwrap()
         .state
         .messages
+}
+
+async fn wait_until_the_stream_is_empty(stream: &EventStream) {
+    let mut remaining = stream_messages(stream).await;
+    for _ in 0..50 {
+        if remaining == 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        remaining = stream_messages(stream).await;
+    }
+    assert_eq!(remaining, 0);
+}
+
+// Sends the first messages of the first partition up to max_messages_per_partition, so that the
+// stream refuses any more of the partition.
+async fn fill_first_partition(
+    nats: &Nats,
+    manifest: &Manifest,
+    broker: &BrokerSettings,
+) -> (PartitionId, Vec<PartitionMessage>) {
+    let partition = manifest.partitions[0].partition.clone();
+    let messages: Vec<PartitionMessage> = common::worker_messages(manifest, MAX_MESSAGE_SIZE)
+        .await
+        .into_iter()
+        .filter(|message| *message.partition() == partition)
+        .take(usize::try_from(broker.max_messages_per_partition).unwrap())
+        .collect();
+    let writer = NatsWriter::new(connect(nats).await, RUN_ID, MAX_MESSAGE_SIZE).unwrap();
+    for message in &messages {
+        writer.put(message.clone()).await.unwrap();
+    }
+    (partition, messages)
+}
+
+// Takes messages from the consumer of the analyzer with another client and drops them without
+// acknowledging them, as a fetch whose reply was lost when the server went down leaves them.
+async fn take_without_ack(
+    nats: &Nats,
+    partition: &PartitionId,
+    max: usize,
+) -> Vec<PartitionMessage> {
+    let consumer: PullConsumer = async_nats::jetstream::new(connect(nats).await)
+        .get_stream(stream_name(RUN_ID))
+        .await
+        .unwrap()
+        .get_consumer(&consumer_name(partition))
+        .await
+        .unwrap();
+    let mut batch = consumer.fetch().max_messages(max).messages().await.unwrap();
+    let mut taken = Vec::new();
+    while let Some(message) = batch.next().await {
+        let message = message.unwrap();
+        taken.push(
+            decode(
+                RUN_ID,
+                &message.subject,
+                message.headers.as_ref().unwrap(),
+                &message.payload,
+            )
+            .unwrap(),
+        );
+    }
+    taken
+}
+
+fn messages_of(deliveries: &[Delivery]) -> Vec<PartitionMessage> {
+    deliveries
+        .iter()
+        .map(|delivery| delivery.message.clone())
+        .collect()
 }
 
 // Records what the analyzer receives, and can slow it down, stop it after some fetches, restart
@@ -411,15 +483,7 @@ async fn the_analyzer_gets_the_same_tables_through_nats_as_through_channels() {
 
     assert_eq!(tables(&database), expected);
     // Every message was acknowledged, so the work queue holds none of them.
-    let mut remaining = stream_messages(&stream).await;
-    for _ in 0..50 {
-        if remaining == 0 {
-            break;
-        }
-        tokio::time::sleep(Duration::from_millis(100)).await;
-        remaining = stream_messages(&stream).await;
-    }
-    assert_eq!(remaining, 0);
+    wait_until_the_stream_is_empty(&stream).await;
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -605,4 +669,83 @@ async fn a_restart_of_the_server_does_not_change_the_tables() {
 
     assert!(probe.fetches > 10);
     assert_eq!(tables(&database), expected);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "starts a NATS server in Docker"]
+async fn messages_delivered_to_no_one_before_a_restart_of_the_server_come_again_after_the_reconnection()
+ {
+    let nats = Nats::start();
+    let workspace = fixture();
+    let manifest = workspace.manifest();
+    // ack_wait is far longer than the wait for the messages, so that only new consumers can
+    // deliver them again within it.
+    let broker = BrokerSettings {
+        max_messages_per_partition: 4,
+        ..broker("10m")
+    };
+    let stream = create_stream(&nats, &manifest, &broker).await;
+    let (partition, messages) = fill_first_partition(&nats, &manifest, &broker).await;
+    let mut reader = reader(&stream, &manifest, &broker, analyzer_settings(8)).await;
+    let before_restart = reader.fetch(&partition, 1).await.unwrap();
+    assert_eq!(messages_of(&before_restart), messages[..1]);
+    assert_eq!(
+        take_without_ack(&nats, &partition, messages.len()).await,
+        messages[1..]
+    );
+
+    tokio::task::block_in_place(|| nats.restart());
+    let fetched = reader
+        .fetch_ready_within(
+            std::slice::from_ref(&partition),
+            messages.len(),
+            Duration::from_secs(30),
+        )
+        .await
+        .unwrap();
+
+    let (index, deliveries) = fetched.expect("the messages are delivered again");
+    assert_eq!(index, 0);
+    assert_eq!(messages_of(&deliveries), messages);
+    // The acknowledgement through the consumer that was replaced does not fail; the message
+    // delivered again is acknowledged after the next commit.
+    reader.ack(&[before_restart[0].handle]).await.unwrap();
+    let handles: Vec<DeliveryHandle> = deliveries.iter().map(|delivery| delivery.handle).collect();
+    reader.ack(&handles).await.unwrap();
+    wait_until_the_stream_is_empty(&stream).await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "starts a NATS server in Docker"]
+async fn messages_received_but_not_acknowledged_do_not_come_again_without_a_reconnection() {
+    let nats = Nats::start();
+    let workspace = fixture();
+    let manifest = workspace.manifest();
+    let broker = BrokerSettings {
+        max_messages_per_partition: 4,
+        ..broker("10m")
+    };
+    let stream = create_stream(&nats, &manifest, &broker).await;
+    let (partition, messages) = fill_first_partition(&nats, &manifest, &broker).await;
+    let mut reader = reader(&stream, &manifest, &broker, analyzer_settings(8)).await;
+    let partitions = std::slice::from_ref(&partition);
+
+    let first = reader.fetch(&partition, 1).await.unwrap();
+    let (_, rest) = reader
+        .fetch_ready_within(partitions, messages.len(), Duration::from_secs(5))
+        .await
+        .unwrap()
+        .expect("the rest of the messages are delivered");
+    let again = reader
+        .fetch_ready_within(partitions, messages.len(), Duration::from_secs(2))
+        .await
+        .unwrap();
+
+    assert_eq!(messages_of(&first), messages[..1]);
+    assert_eq!(messages_of(&rest), messages[1..]);
+    assert!(
+        again.is_none(),
+        "{:?}",
+        again.map(|(_, deliveries)| messages_of(&deliveries))
+    );
 }

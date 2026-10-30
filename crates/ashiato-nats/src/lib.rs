@@ -14,5 +14,5 @@ pub use codec::{
 };
 pub use config::{CapacityError, check_capacity, consumer_config, max_ack_pending, stream_config};
 pub use control::{ControlServer, ControlService, NatsControl, control_subject, serve_control};
-pub use reader::NatsReader;
+pub use reader::{NatsReader, Reconnections};
 pub use writer::NatsWriter;

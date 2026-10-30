@@ -1,14 +1,14 @@
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ashiato_pipeline::{
     BrokerSettings, Delivery, DeliveryHandle, PartitionId, PartitionReader, TransportError,
 };
-use async_nats::HeaderMap;
 use async_nats::jetstream::message::Acker;
 use async_nats::jetstream::stream::{ConsumerErrorKind, Stream};
 use async_nats::jetstream::{self, consumer};
+use async_nats::{HeaderMap, Statistics};
 use async_trait::async_trait;
 use futures_util::StreamExt;
 
@@ -22,6 +22,25 @@ type PullConsumer = consumer::Consumer<consumer::pull::Config>;
 // partition never holds back the others (9 節). The idle polls back off up to this interval.
 const IDLE_POLL_INITIAL: Duration = Duration::from_millis(1);
 const IDLE_POLL_MAX: Duration = Duration::from_millis(100);
+
+// Tells whether the client has connected to the server again since the last check. async-nats
+// counts the first connection and every reconnection in Statistics::connects (0.51.0).
+pub struct Reconnections {
+    statistics: Arc<Statistics>,
+    seen: u64,
+}
+
+impl Reconnections {
+    pub fn new(statistics: Arc<Statistics>) -> Self {
+        let _ = &statistics;
+        todo!()
+    }
+
+    pub fn since_last_check(&mut self) -> bool {
+        let _ = (&self.statistics, self.seen);
+        todo!()
+    }
+}
 
 pub struct NatsReader {
     client: async_nats::Client,
