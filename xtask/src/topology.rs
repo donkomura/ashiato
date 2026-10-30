@@ -16,7 +16,7 @@ impl Cpuset {
     }
 
     pub fn count(&self) -> usize {
-        todo!()
+        self.0.len()
     }
 }
 

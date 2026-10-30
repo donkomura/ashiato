@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::time::Duration;
 
 use crate::compose::{Layout, Service};
@@ -99,8 +100,37 @@ pub struct ScalingRun {
     pub measured: bool,
 }
 
-pub fn scaling_runs(_workers: &[u32], _repeat: u32) -> Vec<ScalingRun> {
-    todo!()
+pub fn scaling_runs(workers: &[u32], repeat: u32) -> Vec<ScalingRun> {
+    let reference = ScalingRun {
+        spec: RunSpec {
+            name: REFERENCE,
+            layout: Layout::SingleProcess,
+            fault: None,
+        },
+        measured: false,
+    };
+    let levels: BTreeSet<u32> = workers.iter().copied().collect();
+    let distributed = levels.into_iter().flat_map(move |workers| {
+        let warm_up = (format!("n{workers}-warmup"), false);
+        let measured = (1..=repeat).map(move |number| (format!("n{workers}-{number}"), true));
+        std::iter::once(warm_up)
+            .chain(measured)
+            .map(move |(name, measured)| ScalingRun {
+                spec: RunSpec {
+                    name: static_name(name),
+                    layout: Layout::Distributed { workers },
+                    fault: None,
+                },
+                measured,
+            })
+    });
+    std::iter::once(reference).chain(distributed).collect()
+}
+
+// The names of RunSpec are static so that the runs of 14.1.3 節 stay a table. The scaling runs
+// are planned once per command, so leaking their few names costs nothing that matters.
+fn static_name(name: String) -> &'static str {
+    Box::leak(name.into_boxed_str())
 }
 
 // ashiato connects to MinIO and NATS once at its start, so the servers are started and waited for
