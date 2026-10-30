@@ -1,11 +1,8 @@
-use std::path::Path;
-
-use anyhow::bail;
+use anyhow::{bail, ensure};
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
-use crate::topology::{MAX_WORKERS, assign_cpus, read_physical_cores};
-
-const CPU_DIR: &str = "/sys/devices/system/cpu";
+use crate::correctness::{Options, REPORT_FILE, dataset_spec, integration_dir};
+use crate::topology::MAX_WORKERS;
 
 #[derive(Debug, PartialEq, Parser)]
 #[command(name = "xtask", about = "Tasks of the ashiato repository")]
@@ -80,12 +77,17 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
 }
 
 fn correctness(args: &CorrectnessArgs) -> anyhow::Result<()> {
-    let cores = read_physical_cores(Path::new(CPU_DIR))?;
-    assign_cpus(&cores, MAX_WORKERS)?;
-    bail!(
-        "integration correctness --dataset {:?} --scale {} needs the dataset generator of \
-         ashiato-testkit, which is not wired yet",
-        args.dataset,
-        args.scale
-    )
+    let options = Options {
+        dataset: dataset_spec(args.dataset, args.scale),
+        integration_dir: integration_dir(),
+    };
+    let report = crate::correctness::correctness(&options)?;
+    let path = options.integration_dir.join(REPORT_FILE);
+    ensure!(
+        report.passed(),
+        "integration correctness failed; see {}",
+        path.display()
+    );
+    eprintln!("integration correctness passed; see {}", path.display());
+    Ok(())
 }

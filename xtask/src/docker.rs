@@ -31,8 +31,9 @@ impl ComposeProject {
     }
 
     pub fn create(&self, services: &[Service]) -> Vec<String> {
-        let _ = services;
-        todo!()
+        let mut args = self.command(&["create"]);
+        args.extend(services.iter().map(Service::name));
+        args
     }
 
     pub fn kill(&self, service: Service) -> Vec<String> {
