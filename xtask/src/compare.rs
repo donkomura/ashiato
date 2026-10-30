@@ -88,7 +88,7 @@ pub fn compare_workspaces(
     })
 }
 
-fn literal(path: &Path) -> String {
+pub(crate) fn literal(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "''"))
 }
 
