@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -32,13 +33,15 @@ pub struct Reconnections {
 
 impl Reconnections {
     pub fn new(statistics: Arc<Statistics>) -> Self {
-        let _ = &statistics;
-        todo!()
+        let seen = statistics.connects.load(Ordering::Relaxed);
+        Self { statistics, seen }
     }
 
     pub fn since_last_check(&mut self) -> bool {
-        let _ = (&self.statistics, self.seen);
-        todo!()
+        let connects = self.statistics.connects.load(Ordering::Relaxed);
+        let reconnected = connects > self.seen;
+        self.seen = connects;
+        reconnected
     }
 }
 
@@ -52,6 +55,7 @@ pub struct NatsReader {
     ackers: Mutex<HashMap<u64, Acker>>,
     next_handle: u64,
     retry: RetryPolicy,
+    reconnections: Reconnections,
 }
 
 impl EventStream {
@@ -73,6 +77,7 @@ impl EventStream {
             ackers: Mutex::new(HashMap::new()),
             next_handle: 0,
             retry: self.retry,
+            reconnections: Reconnections::new(self.client.statistics()),
         };
         for partition in partitions {
             reader.renew(&partition).await?;
@@ -116,6 +121,22 @@ impl NatsReader {
         Ok(())
     }
 
+    // A fetch that the server answers while the connection goes down leaves its messages
+    // delivered to no one until ack_wait passes. On a full partition no later message arrives to
+    // show the gap (8.2 節), so the analyzer would wait for them. New consumers deliver them again
+    // in the order of the stream, and the analyzer drops the ones that it has by their positions
+    // (10 節).
+    async fn renew_after_reconnection(&mut self) -> Result<(), NatsError> {
+        if !self.reconnections.since_last_check() {
+            return Ok(());
+        }
+        let partitions: Vec<PartitionId> = self.consumers.keys().cloned().collect();
+        for partition in &partitions {
+            self.renew(partition).await?;
+        }
+        Ok(())
+    }
+
     // The deadline is checked only between the polls, so that no message is taken from the
     // server and then dropped when the wait ends.
     async fn fetch_ready_until(
@@ -129,6 +150,7 @@ impl NatsReader {
         }
         let mut idle = IDLE_POLL_INITIAL;
         loop {
+            self.renew_after_reconnection().await?;
             for (index, partition) in partitions.iter().enumerate() {
                 let deliveries = self.fetch_now(partition, max).await?;
                 if !deliveries.is_empty() {
@@ -203,6 +225,7 @@ impl PartitionReader for NatsReader {
     ) -> Result<Vec<Delivery>, TransportError> {
         let mut idle = IDLE_POLL_INITIAL;
         loop {
+            self.renew_after_reconnection().await?;
             let deliveries = self.fetch_now(partition, max).await?;
             if !deliveries.is_empty() || max == 0 {
                 return Ok(deliveries);
