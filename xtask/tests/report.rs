@@ -3,8 +3,13 @@ use std::time::Duration;
 use ashiato_testkit::dataset::{DatasetKind, DatasetSummary};
 use chrono::{TimeZone, Utc};
 use xtask::compare::{Comparison, TABLES, TableDifference, WorkspaceComparison};
-use xtask::report::{Environment, ImageVersion, Injection, ReferenceCheck, Report, RunResult};
-use xtask::schedule::{RunSpec, correctness_runs};
+use xtask::metrics::{AnalyzerMetrics, AnalyzerPhases, AnalyzerTimes, WorkerMetrics, WorkerTimes};
+use xtask::report::{
+    Environment, ImageVersion, Injection, ReferenceCheck, Report, RunResult, ScalingReport,
+    Unmeasured,
+};
+use xtask::scaling::{Run, Scaling, evaluate, report_section};
+use xtask::schedule::{RunSpec, correctness_runs, scaling_runs};
 use xtask::topology::{CpuAssignment, Cpuset};
 
 fn environment() -> Environment {
@@ -340,4 +345,172 @@ fn the_report_passes_with_a_place_for_the_checks_of_r0() {
             "{line}\n{markdown}"
         );
     }
+}
+
+const START: i64 = 1_730_000_000_000;
+
+fn measured(workers: u32, millis: i64) -> Run {
+    Run {
+        workers,
+        analyzer: AnalyzerMetrics {
+            unix_ms: START + 60_000,
+            is_final: true,
+            manifest_files: 24,
+            ingested_files: 24,
+            global_watermark: None,
+            pending_rows: 0,
+            pending_max_rows: 0,
+            time_ms: AnalyzerTimes::default(),
+            phases_unix_ms: AnalyzerPhases {
+                first_plan_response: Some(START),
+                last_end_committed: Some(START + millis),
+                correlated: None,
+            },
+        },
+        worker_metrics: (0..workers)
+            .map(|worker_id| WorkerMetrics {
+                worker_id,
+                unix_ms: START + 60_000,
+                is_final: true,
+                time_ms: WorkerTimes::default(),
+            })
+            .collect(),
+        stats: Vec::new(),
+    }
+}
+
+fn scaling(two_workers_ms: i64) -> Scaling {
+    let mut summary = summary();
+    summary.kind = DatasetKind::B;
+    evaluate(
+        &[measured(1, 10_000), measured(2, two_workers_ms)],
+        &summary,
+        2,
+    )
+    .unwrap()
+}
+
+fn scaling_report(two_workers_ms: i64) -> ScalingReport {
+    let runs = scaling_runs(&[1, 2], 1)
+        .into_iter()
+        .map(|run| RunResult {
+            spec: run.spec,
+            elapsed: Duration::from_millis(12_340),
+            analyzer_exit: Some(0),
+            output_lines: 42,
+            injection: None,
+            comparison: (run.spec.name != "r0").then(|| Ok(matching())),
+            error: None,
+        })
+        .collect();
+    let mut runs = report(runs);
+    runs.dataset = "b".to_owned();
+    ScalingReport {
+        runs,
+        unmeasured: Vec::new(),
+        scaling: Ok(scaling(two_workers_ms)),
+    }
+}
+
+#[test]
+fn the_scaling_passes_only_when_every_run_matches_r0_and_every_efficiency_meets_the_criterion() {
+    assert!(scaling_report(6_000).passed());
+
+    let slow = scaling_report(7_000);
+    assert!(!slow.passed());
+
+    let mut differs = scaling_report(6_000);
+    differs.runs.runs[1].comparison = Some(Ok(mismatching()));
+    assert!(!differs.passed());
+
+    let mut unmeasured = scaling_report(6_000);
+    unmeasured.unmeasured.push(Unmeasured {
+        run: "n2-1",
+        error: "the analyzer wrote no final metrics".to_owned(),
+    });
+    assert!(!unmeasured.passed());
+
+    let mut not_evaluated = scaling_report(6_000);
+    not_evaluated.scaling = Err("no runs were measured".to_owned());
+    assert!(!not_evaluated.passed());
+}
+
+#[test]
+fn the_scaling_report_records_the_environment_the_runs_and_the_speed() {
+    let report = scaling_report(6_000);
+    let markdown = report.markdown();
+
+    assert!(
+        markdown.starts_with(
+            "# 統合テストの速度の確認（データセット b）\n\n\
+             結果: 合格（一致の確認: 5 件の実行のうち 0 件が不合格。速度の確認: 合格）\n\n"
+        ),
+        "{markdown}"
+    );
+    for line in [
+        "| MinIO と NATS の CPU | 0,6 |",
+        "| Docker | 28.1.1 |",
+        "| データセット | b |",
+        "| 圧縮後のバイト数 | 1234567 |",
+        "| R0 | single_process | なし | 12.3 秒 | 0 | 42 | 合格 |",
+        "| N1-WARMUP | distributed、ワーカー 1 | なし | 12.3 秒 | 0 | 42 | 合格 |",
+        "| N1-1 | distributed、ワーカー 1 | なし | 12.3 秒 | 0 | 42 | 合格 |",
+        "| N2-WARMUP | distributed、ワーカー 2 | なし | 12.3 秒 | 0 | 42 | 合格 |",
+        "| N2-1 | distributed、ワーカー 2 | なし | 12.3 秒 | 0 | 42 | 合格 |",
+    ] {
+        assert!(
+            markdown.lines().any(|row| row == line),
+            "{line}\n{markdown}"
+        );
+    }
+    let section = report_section(report.scaling.as_ref().unwrap());
+    assert!(
+        markdown.ends_with(&format!(
+            "\n{section}\nCPU 使用率の標本は、各回の取り込み時間 T(N) の間に取ったものに限った。\n"
+        )),
+        "{markdown}"
+    );
+    assert!(!markdown.contains("## R0 の確認"), "{markdown}");
+    assert!(!markdown.contains("## 一致しなかった項目"), "{markdown}");
+    assert!(
+        !markdown.contains("## 計測値を読めなかった実行"),
+        "{markdown}"
+    );
+}
+
+#[test]
+fn the_scaling_report_gives_the_runs_that_did_not_match_or_could_not_be_measured() {
+    let mut report = scaling_report(7_000);
+    report.runs.runs[2].comparison = Some(Ok(mismatching()));
+    report.unmeasured.push(Unmeasured {
+        run: "n2-1",
+        error: "the analyzer wrote no final metrics".to_owned(),
+    });
+    let markdown = report.markdown();
+
+    assert!(
+        markdown.contains(
+            "結果: 不合格（一致の確認: 5 件の実行のうち 1 件が不合格。速度の確認: 不合格）"
+        ),
+        "{markdown}"
+    );
+    assert!(markdown.contains("### N1-1\n"), "{markdown}");
+    assert!(
+        markdown.contains(
+            "## 計測値を読めなかった実行\n\n- N2-1: the analyzer wrote no final metrics\n"
+        ),
+        "{markdown}"
+    );
+    assert!(markdown.contains("結果: 不合格（E(N) が基準を下回った N: 2）"));
+
+    report.scaling = Err("no runs were measured".to_owned());
+    let markdown = report.markdown();
+    assert!(
+        markdown.contains("速度の確認: 計算できなかった）"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.ends_with("## 速度の確認\n\n速度を計算できなかった: no runs were measured\n"),
+        "{markdown}"
+    );
 }

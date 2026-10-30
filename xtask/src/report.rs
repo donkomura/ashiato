@@ -6,6 +6,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 
 use crate::compare::Comparison;
 use crate::compose::Layout;
+use crate::scaling::Scaling;
 use crate::schedule::{Fault, REFERENCE, RunSpec};
 use crate::topology::{CpuAssignment, Cpuset};
 
@@ -265,6 +266,31 @@ impl Report {
                 check.detail
             );
         }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Unmeasured {
+    pub run: &'static str,
+    pub error: String,
+}
+
+// The report of 14.1.4 節. Every run, the warm-up runs included, is compared with R0 as in
+// 14.1.3 節, and the measured runs give the speed.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScalingReport {
+    pub runs: Report,
+    pub unmeasured: Vec<Unmeasured>,
+    pub scaling: Result<Scaling, String>,
+}
+
+impl ScalingReport {
+    pub fn passed(&self) -> bool {
+        todo!()
+    }
+
+    pub fn markdown(&self) -> String {
+        todo!()
     }
 }
 
