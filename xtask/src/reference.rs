@@ -88,13 +88,73 @@ impl SignalComparison {
 }
 
 pub fn scenario_check(compared: Result<ScenarioComparison, String>) -> ReferenceCheck {
-    let _ = compared;
-    todo!()
+    let (passed, detail) = match compared {
+        Ok(compared) if compared.matches() => (true, "正解の一覧と一致した".to_owned()),
+        Ok(compared) => {
+            let mut parts = Vec::new();
+            if !compared.missing.is_empty() {
+                parts.push(format!(
+                    "出力にない正解が {} 件（{}）",
+                    compared.missing.len(),
+                    scenario_ids(&compared.missing)
+                ));
+            }
+            if !compared.unexpected.is_empty() {
+                parts.push(format!(
+                    "正解にない出力が {} 件（{}）",
+                    compared.unexpected.len(),
+                    scenario_ids(&compared.unexpected)
+                ));
+            }
+            (false, parts.join("、"))
+        }
+        Err(error) => (false, format!("エラー: {error}")),
+    };
+    reference_check(SCENARIO_CHECK, passed, detail)
 }
 
 pub fn signal_check(compared: Result<SignalComparison, String>) -> ReferenceCheck {
-    let _ = compared;
-    todo!()
+    let (passed, detail) = match compared {
+        Ok(compared) if compared.matches() => (
+            true,
+            format!("{} 件の兆候が一致した", compared.batch_signals),
+        ),
+        Ok(compared) if compared.differences.is_empty() => {
+            (false, "バッチ処理の兆候が 0 件だった".to_owned())
+        }
+        Ok(compared) => (
+            false,
+            compared
+                .differences
+                .iter()
+                .map(|difference| {
+                    format!(
+                        "{}（R0 にだけある行 {}、バッチ処理にだけある行 {}）",
+                        difference.rule_id, difference.only_in_reference, difference.only_in_batch
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join("、"),
+        ),
+        Err(error) => (false, format!("エラー: {error}")),
+    };
+    reference_check(SIGNAL_CHECK, passed, detail)
+}
+
+fn scenario_ids(scenarios: &[ExpectedScenario]) -> String {
+    scenarios
+        .iter()
+        .map(|scenario| scenario.scenario_id.as_str())
+        .collect::<Vec<_>>()
+        .join("、")
+}
+
+fn reference_check(name: &str, passed: bool, detail: String) -> ReferenceCheck {
+    ReferenceCheck {
+        name: name.to_owned(),
+        passed,
+        detail,
+    }
 }
 
 // The batch processing of 14.1.3 節 puts every event of the dataset into one table and runs the

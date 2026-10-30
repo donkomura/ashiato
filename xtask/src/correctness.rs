@@ -22,7 +22,8 @@ use crate::docker::{
 };
 use crate::metrics::latest_analyzer;
 use crate::plan::{PlanSpec, write_plan};
-use crate::report::{Environment, ImageVersion, Injection, Report, RunResult};
+use crate::reference::{compare_scenarios, compare_signals, scenario_check, signal_check};
+use crate::report::{Environment, ImageVersion, Injection, ReferenceCheck, Report, RunResult};
 use crate::schedule::{Fault, REFERENCE, RunSpec, Step, correctness_runs};
 use crate::topology::{CpuAssignment, Cpuset, MAX_WORKERS, assign_cpus, read_physical_cores};
 
@@ -33,6 +34,7 @@ const VOLUME_LABEL: &str = "ashiato-integration=minio";
 const SUMMARY_FILE: &str = "dataset.json";
 pub const REPORT_FILE: &str = "report.md";
 const COMPOSE_LOG: &str = "compose.log";
+const REFERENCE_WORK_DIR: &str = "reference-check";
 const POLL: Duration = Duration::from_millis(500);
 const SERVER_TIMEOUT: Duration = Duration::from_secs(60);
 // The base covers starting the containers and the late worker of F4; the hour per scale is far
@@ -128,17 +130,34 @@ pub fn correctness(options: &Options) -> anyhow::Result<Report> {
         );
         run.comparison = Some(compared.map_err(|error| format!("{error:#}")));
     }
+    let reference_checks = check_reference(&reference, &dataset, &summary);
     let report = Report {
         dataset: runner.dataset.to_owned(),
         environment,
         summary,
         runs,
-        reference_checks: None,
+        reference_checks: Some(reference_checks),
     };
     let path = options.integration_dir.join(REPORT_FILE);
     fs::write(&path, report.markdown())
         .with_context(|| format!("failed to write {}", path.display()))?;
     Ok(report)
+}
+
+// R0 is checked on its own, since every run would match a wrong R0 (14.1.3 節).
+fn check_reference(
+    reference: &RunDir,
+    dataset: &Path,
+    summary: &DatasetSummary,
+) -> Vec<ReferenceCheck> {
+    let output = fs::read(reference.stdout(Service::Analyzer)).unwrap_or_default();
+    let scenarios = compare_scenarios(&output, &summary.expected_scenarios)
+        .map_err(|error| format!("{error:#}"));
+    // The run directory of R0 is created anew for every run, so no earlier work dir is left.
+    let work_dir = reference.root().join(REFERENCE_WORK_DIR);
+    let signals = compare_signals(&reference.database(), dataset, &work_dir)
+        .map_err(|error| format!("{error:#}"));
+    vec![scenario_check(scenarios), signal_check(signals)]
 }
 
 fn environment(cores: Vec<Cpuset>, cpus: CpuAssignment) -> anyhow::Result<Environment> {
