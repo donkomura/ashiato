@@ -11,6 +11,8 @@ workspace = true
 
 [dependencies]
 anyhow = "1.0.104"
+ashiato-core = { version = "0.1.0", path = "../crates/ashiato-core" }
+ashiato-duckdb = { version = "0.1.0", path = "../crates/ashiato-duckdb" }
 ashiato-nats = { version = "0.1.0", path = "../crates/ashiato-nats" }
 ashiato-testkit = { version = "0.1.0", path = "../crates/ashiato-testkit" }
 chrono = "0.4.45"
@@ -20,7 +22,10 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 serde_yaml = "0.9.34"
 thiserror = "2.0.21"
+tokio = { version = "1.54.1", features = ["rt"] }
 
 [dev-dependencies]
+ashiato-ingest = { version = "0.1.0", path = "../crates/ashiato-ingest" }
 ashiato-pipeline = { version = "0.1.0", path = "../crates/ashiato-pipeline" }
 tempfile = "3.27.0"
+tokio = { version = "1.54.1", features = ["rt-multi-thread"] }

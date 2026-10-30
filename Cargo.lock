@@ -3698,6 +3698,9 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ashiato-core",
+ "ashiato-duckdb",
+ "ashiato-ingest",
  "ashiato-nats",
  "ashiato-pipeline",
  "ashiato-testkit",
@@ -3709,6 +3712,7 @@ dependencies = [
  "serde_yaml",
  "tempfile",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]

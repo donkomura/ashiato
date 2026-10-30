@@ -3,5 +3,6 @@ pub mod compare;
 pub mod compose;
 pub mod metrics;
 pub mod plan;
+pub mod reference;
 pub mod scaling;
 pub mod topology;
