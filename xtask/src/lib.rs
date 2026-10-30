@@ -5,4 +5,5 @@ pub mod metrics;
 pub mod plan;
 pub mod reference;
 pub mod scaling;
+pub mod schedule;
 pub mod topology;
