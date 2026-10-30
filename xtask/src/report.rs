@@ -6,7 +6,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 
 use crate::compare::Comparison;
 use crate::compose::Layout;
-use crate::scaling::Scaling;
+use crate::scaling::{Scaling, report_section};
 use crate::schedule::{Fault, REFERENCE, RunSpec};
 use crate::topology::{CpuAssignment, Cpuset};
 
@@ -286,11 +286,57 @@ pub struct ScalingReport {
 
 impl ScalingReport {
     pub fn passed(&self) -> bool {
-        todo!()
+        self.runs.passed() && self.unmeasured.is_empty() && self.speed_passed()
+    }
+
+    fn speed_passed(&self) -> bool {
+        matches!(&self.scaling, Ok(scaling) if scaling.passed())
     }
 
     pub fn markdown(&self) -> String {
-        todo!()
+        let runs = &self.runs;
+        let mut out = format!(
+            "# 統合テストの速度の確認（データセット {}）\n\n",
+            runs.dataset
+        );
+        let failed = runs.runs.iter().filter(|run| !run.passed()).count();
+        let speed = match &self.scaling {
+            Ok(_) => verdict(self.speed_passed()),
+            Err(_) => "計算できなかった",
+        };
+        let _ = writeln!(
+            out,
+            "結果: {}（一致の確認: {} 件の実行のうち {failed} 件が不合格。速度の確認: {speed}）\n",
+            verdict(self.passed()),
+            runs.runs.len()
+        );
+        runs.write_environment(&mut out);
+        runs.write_dataset(&mut out);
+        runs.write_runs(&mut out);
+        if !self.unmeasured.is_empty() {
+            out.push_str("## 計測値を読めなかった実行\n\n");
+            for unmeasured in &self.unmeasured {
+                let _ = writeln!(
+                    out,
+                    "- {}: {}",
+                    unmeasured.run.to_uppercase(),
+                    unmeasured.error
+                );
+            }
+            out.push('\n');
+        }
+        match &self.scaling {
+            Ok(scaling) => {
+                out.push_str(&report_section(scaling));
+                out.push_str(
+                    "\nCPU 使用率の標本は、各回の取り込み時間 T(N) の間に取ったものに限った。\n",
+                );
+            }
+            Err(error) => {
+                let _ = writeln!(out, "## 速度の確認\n\n速度を計算できなかった: {error}");
+            }
+        }
+        out
     }
 }
 
