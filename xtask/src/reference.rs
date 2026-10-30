@@ -13,6 +13,10 @@ use duckdb::Connection;
 use duckdb::types::{TimeUnit, Value};
 
 use crate::compare::literal;
+use crate::report::ReferenceCheck;
+
+pub const SCENARIO_CHECK: &str = "scenario_match が正解の一覧と一致する";
+pub const SIGNAL_CHECK: &str = "signals がバッチ処理と一致する";
 
 const SUMMARY_FILE: &str = "dataset.json";
 const BATCH_DATABASE: &str = "batch.duckdb";
@@ -81,6 +85,16 @@ impl SignalComparison {
     pub fn matches(&self) -> bool {
         self.batch_signals > 0 && self.differences.is_empty()
     }
+}
+
+pub fn scenario_check(compared: Result<ScenarioComparison, String>) -> ReferenceCheck {
+    let _ = compared;
+    todo!()
+}
+
+pub fn signal_check(compared: Result<SignalComparison, String>) -> ReferenceCheck {
+    let _ = compared;
+    todo!()
 }
 
 // The batch processing of 14.1.3 節 puts every event of the dataset into one table and runs the
