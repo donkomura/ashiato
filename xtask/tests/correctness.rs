@@ -149,7 +149,11 @@ fn every_run_of_a_small_dataset_a_matches_r0() {
     let report = correctness(&options).unwrap();
 
     let markdown = fs::read_to_string(dir.path().join("report.md")).unwrap();
-    assert!(report.passed(), "{markdown}");
+    if !report.passed() {
+        // The logs of the runs are the only clue to a failure that does not happen every time.
+        let kept = dir.keep();
+        panic!("the runs are kept in {}\n{markdown}", kept.display());
+    }
     assert_eq!(markdown, report.markdown());
     for run in correctness_runs() {
         let run_dir = dir.path().join(run.name);
