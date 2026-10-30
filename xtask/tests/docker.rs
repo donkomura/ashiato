@@ -89,6 +89,19 @@ fn the_services_are_started_killed_and_started_again_by_name() {
     }
 }
 
+// docker compose start does nothing for a service without a container, so the late worker of F4
+// is created with the other roles and started later.
+#[test]
+fn a_service_held_back_is_created_without_starting_it() {
+    let project = project();
+
+    assert_eq!(
+        project.create(&[Service::Worker(3)]),
+        compose(&["create", "worker-3"])
+    );
+    assert_eq!(project.create(&[]), compose(&["create"]));
+}
+
 #[test]
 fn the_state_of_a_container_is_asked_in_json_and_the_servers_are_probed() {
     let project = project();

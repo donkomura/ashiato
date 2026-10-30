@@ -30,6 +30,11 @@ impl ComposeProject {
         args
     }
 
+    pub fn create(&self, services: &[Service]) -> Vec<String> {
+        let _ = services;
+        todo!()
+    }
+
     pub fn kill(&self, service: Service) -> Vec<String> {
         self.command(&["kill", &service.name()])
     }
