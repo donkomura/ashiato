@@ -14,6 +14,10 @@ impl Cpuset {
     pub fn new(cpus: impl IntoIterator<Item = u32>) -> Self {
         Self(cpus.into_iter().collect())
     }
+
+    pub fn count(&self) -> usize {
+        todo!()
+    }
 }
 
 impl fmt::Display for Cpuset {

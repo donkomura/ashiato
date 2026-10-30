@@ -2,7 +2,9 @@ use std::time::Duration;
 
 use xtask::compose::{Layout, Service};
 use xtask::metrics::{AnalyzerMetrics, AnalyzerPhases, AnalyzerTimes};
-use xtask::schedule::{Fault, REFERENCE, RunSpec, Step, Trigger, correctness_runs};
+use xtask::schedule::{
+    Fault, REFERENCE, RunSpec, ScalingRun, Step, Trigger, correctness_runs, scaling_runs,
+};
 
 fn run(name: &str) -> RunSpec {
     correctness_runs()
@@ -198,4 +200,38 @@ fn a_trigger_on_the_time_counts_from_the_start_of_the_roles() {
     assert!(!trigger.is_due(None, Duration::from_secs(59)));
     assert!(!trigger.is_due(Some(&metrics(100, 100)), Duration::from_secs(59)));
     assert!(trigger.is_due(None, Duration::from_secs(60)));
+}
+
+#[test]
+fn the_scaling_runs_start_with_r0_and_warm_up_before_measuring_each_number_of_workers() {
+    let one = Layout::Distributed { workers: 1 };
+    let two = Layout::Distributed { workers: 2 };
+    let expected = [
+        ("r0", Layout::SingleProcess, false),
+        ("n1-warmup", one, false),
+        ("n1-1", one, true),
+        ("n1-2", one, true),
+        ("n2-warmup", two, false),
+        ("n2-1", two, true),
+        ("n2-2", two, true),
+    ]
+    .map(|(name, layout, measured)| ScalingRun {
+        spec: RunSpec {
+            name,
+            layout,
+            fault: None,
+        },
+        measured,
+    });
+
+    assert_eq!(scaling_runs(&[1, 2], 2), expected);
+    assert_eq!(scaling_runs(&[1, 2], 2)[0].spec.name, REFERENCE);
+}
+
+#[test]
+fn each_number_of_workers_is_measured_once_in_ascending_order() {
+    let runs = scaling_runs(&[3, 1, 3], 1);
+    let names: Vec<&str> = runs.iter().map(|run| run.spec.name).collect();
+
+    assert_eq!(names, ["r0", "n1-warmup", "n1-1", "n3-warmup", "n3-1"]);
 }

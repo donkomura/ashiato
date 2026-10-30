@@ -92,6 +92,17 @@ pub fn correctness_runs() -> Vec<RunSpec> {
         .collect()
 }
 
+// The warm-up run of each number of workers is compared with R0 but not measured (14.1.4 節).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScalingRun {
+    pub spec: RunSpec,
+    pub measured: bool,
+}
+
+pub fn scaling_runs(_workers: &[u32], _repeat: u32) -> Vec<ScalingRun> {
+    todo!()
+}
+
 // ashiato connects to MinIO and NATS once at its start, so the servers are started and waited for
 // before the analyzer and the workers.
 impl RunSpec {

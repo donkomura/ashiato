@@ -11,4 +11,5 @@ pub mod report;
 pub mod runner;
 pub mod scaling;
 pub mod schedule;
+pub mod speed;
 pub mod topology;

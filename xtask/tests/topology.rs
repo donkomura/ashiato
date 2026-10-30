@@ -162,3 +162,10 @@ fn more_workers_than_the_plan_allows_are_an_error() {
         Err(TopologyError::TooManyWorkers { workers: 5 })
     ));
 }
+
+#[test]
+fn a_cpuset_counts_its_logical_cpus() {
+    assert_eq!(Cpuset::new([0, 6]).count(), 2);
+    assert_eq!(Cpuset::new([0]).count(), 1);
+    assert_eq!(parse_cpu_list("0-3,8").unwrap().count(), 5);
+}
