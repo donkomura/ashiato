@@ -55,21 +55,29 @@ pub struct WorkerTimes {
 #[serde(tag = "metrics", rename_all = "snake_case")]
 enum MetricsLine {
     Analyzer(AnalyzerMetrics),
+    Worker(WorkerMetrics),
     #[serde(other)]
     Other,
 }
 
-pub fn latest_analyzer(log: &str) -> Option<AnalyzerMetrics> {
+fn latest<T>(log: &str, pick: impl Fn(MetricsLine) -> Option<T>) -> Option<T> {
     log.lines()
         .rev()
-        .find_map(|line| match serde_json::from_str(line) {
-            Ok(MetricsLine::Analyzer(metrics)) => Some(metrics),
-            _ => None,
-        })
+        .find_map(|line| serde_json::from_str(line).ok().and_then(&pick))
+}
+
+pub fn latest_analyzer(log: &str) -> Option<AnalyzerMetrics> {
+    latest(log, |line| match line {
+        MetricsLine::Analyzer(metrics) => Some(metrics),
+        _ => None,
+    })
 }
 
 pub fn latest_worker(log: &str) -> Option<WorkerMetrics> {
-    todo!("{log}")
+    latest(log, |line| match line {
+        MetricsLine::Worker(metrics) => Some(metrics),
+        _ => None,
+    })
 }
 
 // Integer arithmetic, so that 3 of 10 files reach 30% exactly.
