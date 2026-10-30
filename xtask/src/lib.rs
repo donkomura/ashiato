@@ -8,6 +8,7 @@ pub mod metrics;
 pub mod plan;
 pub mod reference;
 pub mod report;
+pub mod runner;
 pub mod scaling;
 pub mod schedule;
 pub mod topology;
