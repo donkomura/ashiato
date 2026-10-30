@@ -1,7 +1,8 @@
-use anyhow::{bail, ensure};
+use anyhow::ensure;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::correctness::{Options, REPORT_FILE, dataset_spec, integration_dir};
+use crate::speed;
 use crate::topology::MAX_WORKERS;
 
 #[derive(Debug, PartialEq, Parser)]
@@ -70,9 +71,7 @@ pub fn parse_scale(text: &str) -> Result<f64, String> {
 pub fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Command::Integration(Integration::Correctness(args)) => correctness(&args),
-        Command::Integration(Integration::Scaling(_)) => {
-            bail!("integration scaling is not implemented yet (段階 33)")
-        }
+        Command::Integration(Integration::Scaling(args)) => scaling(&args),
     }
 }
 
@@ -89,5 +88,23 @@ fn correctness(args: &CorrectnessArgs) -> anyhow::Result<()> {
         path.display()
     );
     eprintln!("integration correctness passed; see {}", path.display());
+    Ok(())
+}
+
+fn scaling(args: &ScalingArgs) -> anyhow::Result<()> {
+    let options = speed::Options {
+        dataset: speed::dataset_spec(args.dataset, args.scale),
+        integration_dir: integration_dir(),
+        workers: args.workers.clone(),
+        repeat: args.repeat,
+    };
+    let report = speed::scaling(&options)?;
+    let path = options.integration_dir.join(speed::REPORT_FILE);
+    ensure!(
+        report.passed(),
+        "integration scaling failed; see {}",
+        path.display()
+    );
+    eprintln!("integration scaling passed; see {}", path.display());
     Ok(())
 }

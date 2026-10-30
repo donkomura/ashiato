@@ -1,17 +1,34 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::thread;
+use std::time::{Duration, Instant};
 
+use anyhow::Context;
 use ashiato_testkit::dataset::{DatasetKind, DatasetSpec};
+use chrono::Utc;
 use serde::Deserialize;
 
 use crate::cli::ScalingDataset;
-use crate::correctness::DATASET_SEED;
+use crate::compose::{RunDir, Service};
+use crate::correctness::{self, DATASET_SEED, plan_spec, run_id, run_timeout};
+use crate::docker::{dataset_name, project_name};
 use crate::metrics::{AnalyzerMetrics, latest_analyzer, latest_worker};
-use crate::report::ScalingReport;
-use crate::scaling::{Run, ScalingError, StatsSample, parse_docker_stats};
+use crate::report::{Report, ScalingReport, Unmeasured};
+use crate::runner::{
+    CPU_DIR, Runner, build_ashiato, compare, docker, environment, place_dataset, prepare_dataset,
+    strings,
+};
+use crate::scaling::{Run, ScalingError, StatsSample, evaluate, parse_docker_stats};
+use crate::schedule::{REFERENCE, scaling_runs};
+use crate::topology::{assign_cpus, read_physical_cores};
 
 pub const REPORT_FILE: &str = "scaling-report.md";
 pub const RUNS_DIR: &str = "scaling";
 pub const STATS_LOG: &str = "docker-stats.log";
+
+const STATS_INTERVAL: Duration = Duration::from_secs(1);
+const SAMPLE_HEADER: &str = "# ";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Options {
@@ -45,8 +62,6 @@ pub fn dataset_spec(dataset: ScalingDataset, scale: f64) -> DatasetSpec {
         scale,
     }
 }
-
-const SAMPLE_HEADER: &str = "# ";
 
 // The log keeps the output of docker stats as it is, including the containers of other runs, so
 // that a contention for the CPUs can be seen in it afterwards.
@@ -131,6 +146,123 @@ pub fn collect_run(
     })
 }
 
-pub fn scaling(_options: &Options) -> anyhow::Result<ScalingReport> {
-    todo!()
+// Follows the steps of 14.1.6 節 for 14.1.4 節. The runs are kept under integration_dir/scaling,
+// so that the R0 of dataset B does not replace the R0 of the correctness check.
+pub fn scaling(options: &Options) -> anyhow::Result<ScalingReport> {
+    let most_workers = options
+        .workers
+        .iter()
+        .copied()
+        .max()
+        .context("no number of workers was given")?;
+    let cores = read_physical_cores(Path::new(CPU_DIR))?;
+    let cpus = assign_cpus(&cores, most_workers)?;
+    let environment = environment(cores, cpus.clone())?;
+    let (dataset, summary) = prepare_dataset(&correctness::Options {
+        dataset: options.dataset,
+        integration_dir: options.integration_dir.clone(),
+    })?;
+    let minio_volume = place_dataset(&options.dataset, &dataset)?;
+    let ashiato = build_ashiato()?;
+    let runner = Runner {
+        integration_dir: options.integration_dir.join(RUNS_DIR),
+        dataset: dataset_name(options.dataset.kind),
+        cpus,
+        ashiato,
+        minio_volume,
+        plan: plan_spec(&summary, &run_id(options.dataset.kind)),
+        timeout: run_timeout(options.dataset.scale),
+    };
+    let mut runs = Vec::new();
+    let mut measured = Vec::new();
+    let mut unmeasured = Vec::new();
+    for planned in scaling_runs(&options.workers, options.repeat) {
+        let name = planned.spec.name;
+        let (result, stats_log) = sample_stats(|| runner.execute(planned.spec));
+        let run_dir = runner.run_dir(name);
+        fs::create_dir_all(run_dir.logs())?;
+        fs::write(run_dir.logs().join(STATS_LOG), &stats_log)?;
+        if planned.measured {
+            let project = project_name(runner.dataset, name);
+            match measure(
+                &run_dir,
+                &project,
+                planned.spec.layout.workers(),
+                &stats_log,
+            ) {
+                Ok(run) => measured.push(run),
+                Err(error) => unmeasured.push(Unmeasured {
+                    run: name,
+                    error: format!("{error:#}"),
+                }),
+            }
+        }
+        runs.push(result);
+    }
+    let reference = runner.run_dir(REFERENCE);
+    for run in runs.iter_mut().filter(|run| run.spec.name != REFERENCE) {
+        let compared = compare(
+            &reference,
+            &runner.run_dir(run.spec.name),
+            &runner.plan.run_id,
+        );
+        run.comparison = Some(compared.map_err(|error| format!("{error:#}")));
+    }
+    let report = ScalingReport {
+        scaling: evaluate(&measured, &summary, runner.cpus.servers.count())
+            .map_err(|error| error.to_string()),
+        runs: Report {
+            dataset: runner.dataset.to_owned(),
+            environment,
+            summary,
+            runs,
+            reference_checks: None,
+        },
+        unmeasured,
+    };
+    let path = options.integration_dir.join(REPORT_FILE);
+    fs::write(&path, report.markdown())
+        .with_context(|| format!("failed to write {}", path.display()))?;
+    Ok(report)
+}
+
+fn measure(run_dir: &RunDir, project: &str, workers: u32, stats_log: &str) -> anyhow::Result<Run> {
+    let read = |service: Service| {
+        let path = run_dir.stderr(service);
+        fs::read_to_string(&path).with_context(|| format!("failed to read {}", path.display()))
+    };
+    let analyzer_log = read(Service::Analyzer)?;
+    let worker_logs = (1..=workers)
+        .map(|number| read(Service::Worker(number)))
+        .collect::<anyhow::Result<Vec<_>>>()?;
+    let samples = parse_stats_log(stats_log, project)?;
+    Ok(collect_run(&analyzer_log, &worker_logs, &samples)?)
+}
+
+// docker stats --no-stream waits for a second reading of the containers, so a sample can take
+// longer than the interval, and the next one then starts at once. A failed call, as when a
+// container goes away during it, only leaves a gap in the samples.
+fn sample_stats<T>(run: impl FnOnce() -> T) -> (T, String) {
+    let (stop, stopped) = mpsc::channel::<()>();
+    thread::scope(|scope| {
+        let sampler = scope.spawn(move || {
+            let args = strings(&["stats", "--no-stream", "--format", "{{json .}}"]);
+            let mut log = String::new();
+            let mut next = Instant::now();
+            loop {
+                if let Ok(output) = docker(&args) {
+                    log.push_str(&stats_entry(Utc::now().timestamp_millis(), &output));
+                }
+                next = (next + STATS_INTERVAL).max(Instant::now());
+                let wait = next.saturating_duration_since(Instant::now());
+                if stopped.recv_timeout(wait) != Err(RecvTimeoutError::Timeout) {
+                    return log;
+                }
+            }
+        });
+        let value = run();
+        drop(stop);
+        let log = sampler.join().expect("the stats sampler does not panic");
+        (value, log)
+    })
 }
