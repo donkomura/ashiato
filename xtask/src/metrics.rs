@@ -16,7 +16,7 @@ pub struct AnalyzerMetrics {
     pub phases_unix_ms: AnalyzerPhases,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
 pub struct AnalyzerTimes {
     pub fetch_wait: u64,
     pub commit: u64,
@@ -28,6 +28,25 @@ pub struct AnalyzerPhases {
     pub first_plan_response: Option<i64>,
     pub last_end_committed: Option<i64>,
     pub correlated: Option<i64>,
+}
+
+// The worker line of 14.1.5 節. The counts of the partitions are left out, because the speed
+// is computed from the dataset summary.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct WorkerMetrics {
+    pub worker_id: u32,
+    pub unix_ms: i64,
+    #[serde(rename = "final")]
+    pub is_final: bool,
+    pub time_ms: WorkerTimes,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+pub struct WorkerTimes {
+    pub fetch_wait: u64,
+    pub decode: u64,
+    pub publish_wait: u64,
+    pub rejected_wait: u64,
 }
 
 // The log also holds the worker lines of a single process run, the lines of an earlier start
@@ -47,6 +66,10 @@ pub fn latest_analyzer(log: &str) -> Option<AnalyzerMetrics> {
             Ok(MetricsLine::Analyzer(metrics)) => Some(metrics),
             _ => None,
         })
+}
+
+pub fn latest_worker(log: &str) -> Option<WorkerMetrics> {
+    todo!("{log}")
 }
 
 // Integer arithmetic, so that 3 of 10 files reach 30% exactly.

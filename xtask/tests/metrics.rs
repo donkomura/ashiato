@@ -1,4 +1,6 @@
-use xtask::metrics::{AnalyzerMetrics, latest_analyzer, reached};
+use xtask::metrics::{
+    AnalyzerMetrics, WorkerMetrics, WorkerTimes, latest_analyzer, latest_worker, reached,
+};
 
 fn analyzer_line(unix_ms: i64, manifest: u64, ingested: u64, last: bool) -> String {
     format!(
@@ -90,5 +92,44 @@ fn a_failure_is_injected_once_the_ingested_files_reach_its_share_of_the_manifest
             expected,
             "{ingested}/{manifest} at {percent}%"
         );
+    }
+}
+
+#[test]
+fn the_latest_complete_worker_line_is_taken_from_a_log_with_other_lines() {
+    let final_line = WORKER_LINE
+        .replace("\"final\":false", "\"final\":true")
+        .replace("\"unix_ms\":1730000000500", "\"unix_ms\":1730000009000")
+        .replace("\"rejected_wait\":40", "\"rejected_wait\":45");
+    let log = [
+        WORKER_LINE.to_owned(),
+        "Error: publish was rejected".to_owned(),
+        final_line,
+        analyzer_line(1730000009500, 7, 7, true),
+        "{\"metrics\":\"worker\",\"worker_id\":0,\"unix_ms\":17300000".to_owned(),
+    ]
+    .join("\n");
+
+    assert_eq!(
+        latest_worker(&log),
+        Some(WorkerMetrics {
+            worker_id: 0,
+            unix_ms: 1730000009000,
+            is_final: true,
+            time_ms: WorkerTimes {
+                fetch_wait: 10,
+                decode: 20,
+                publish_wait: 30,
+                rejected_wait: 45,
+            },
+        })
+    );
+}
+
+#[test]
+fn a_log_without_worker_lines_has_no_worker_metrics() {
+    let analyzer = analyzer_line(1, 1, 1, true);
+    for log in ["", "starting\n", analyzer.as_str()] {
+        assert_eq!(latest_worker(log), None, "{log:?}");
     }
 }
