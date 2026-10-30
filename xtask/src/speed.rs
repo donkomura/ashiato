@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::cli::ScalingDataset;
 use crate::correctness::DATASET_SEED;
 use crate::metrics::{AnalyzerMetrics, latest_analyzer, latest_worker};
+use crate::report::ScalingReport;
 use crate::scaling::{Run, ScalingError, StatsSample, parse_docker_stats};
 
 pub const REPORT_FILE: &str = "scaling-report.md";
@@ -128,4 +129,8 @@ pub fn collect_run(
         analyzer,
         worker_metrics,
     })
+}
+
+pub fn scaling(_options: &Options) -> anyhow::Result<ScalingReport> {
+    todo!()
 }

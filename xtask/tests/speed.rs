@@ -1,10 +1,17 @@
+use std::fs;
+use std::process::Command;
+
 use ashiato_testkit::dataset::{DatasetKind, DatasetSpec};
+use tempfile::TempDir;
 use xtask::cli::ScalingDataset;
 use xtask::correctness::DATASET_SEED;
+use xtask::docker::project_name;
 use xtask::metrics::{AnalyzerMetrics, AnalyzerPhases, AnalyzerTimes, WorkerMetrics, WorkerTimes};
 use xtask::scaling::{Run, ScalingError, StatsSample};
+use xtask::schedule::scaling_runs;
 use xtask::speed::{
-    MeasureError, TimedSample, collect_run, dataset_spec, parse_stats_log, stats_entry,
+    MeasureError, Options, REPORT_FILE, RUNS_DIR, STATS_LOG, TimedSample, collect_run,
+    dataset_spec, parse_stats_log, scaling, stats_entry,
 };
 
 const START: i64 = 1_730_000_000_000;
@@ -231,4 +238,58 @@ fn a_run_without_the_final_metrics_of_every_role_is_not_measured() {
             "{error}"
         );
     }
+}
+
+fn containers_of(project: &str) -> String {
+    let output = Command::new("docker")
+        .args([
+            "ps",
+            "--all",
+            "--quiet",
+            "--filter",
+            &format!("label=com.docker.compose.project={project}"),
+        ])
+        .output()
+        .unwrap();
+    String::from_utf8(output.stdout).unwrap()
+}
+
+// Builds ashiato in release and runs R0 and one warm-up and one measured run for one and two
+// workers on a small dataset B in Docker. A dataset this small says nothing about the efficiency,
+// so only the procedure is checked.
+#[test]
+#[ignore = "needs Docker and takes several minutes"]
+fn every_run_of_a_small_dataset_b_matches_r0_and_gives_the_speed_of_each_number_of_workers() {
+    let dir = TempDir::new().unwrap();
+    let options = Options {
+        dataset: dataset_spec(ScalingDataset::B, 0.005),
+        integration_dir: dir.path().to_path_buf(),
+        workers: vec![1, 2],
+        repeat: 1,
+    };
+
+    let report = scaling(&options).unwrap();
+
+    let markdown = fs::read_to_string(dir.path().join(REPORT_FILE)).unwrap();
+    if !report.runs.passed() || !report.unmeasured.is_empty() || report.scaling.is_err() {
+        let kept = dir.keep();
+        panic!("the runs are kept in {}\n{markdown}", kept.display());
+    }
+    assert_eq!(markdown, report.markdown());
+    let levels: Vec<u32> = report
+        .scaling
+        .as_ref()
+        .unwrap()
+        .levels
+        .iter()
+        .map(|level| level.workers)
+        .collect();
+    assert_eq!(levels, [1, 2]);
+    for run in scaling_runs(&options.workers, options.repeat) {
+        let run_dir = dir.path().join(RUNS_DIR).join(run.spec.name);
+        assert!(run_dir.join("logs").join("analyzer.stdout").is_file());
+        assert!(run_dir.join("logs").join(STATS_LOG).is_file());
+        assert_eq!(containers_of(&project_name("b", run.spec.name)), "");
+    }
+    assert!(dir.path().join("datasets").join("b-0.005").is_dir());
 }
