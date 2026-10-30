@@ -293,6 +293,176 @@ fn summarize(values: &[f64]) -> Option<CpuUsage> {
     })
 }
 
+const MIB: f64 = 1024.0 * 1024.0;
+const NONE: &str = "—";
+
+// The section of `target/integration/report.md` for 14.1.4 節. Which component limits the speed is
+// left to the reader; the tables hold the values that 14.1.4 節 names for that judgement.
 pub fn report_section(scaling: &Scaling) -> String {
-    todo!("{scaling:?}")
+    let criterion = format!(
+        "{}.{:02}",
+        MIN_EFFICIENCY_PERCENT / 100,
+        MIN_EFFICIENCY_PERCENT % 100
+    );
+    let mut lines = vec![
+        "## 速度の確認".to_owned(),
+        String::new(),
+        format!(
+            "データセットは、圧縮後 {} バイト、{} イベントである。合格の基準は、計測した N = 2、3、4 \
+             のすべてで E(N) が {criterion} 以上であることである（{criterion} は 17 節の仮の値）。",
+            scaling.compressed_bytes, scaling.events
+        ),
+        String::new(),
+        format!("結果: {}", verdict(scaling)),
+        String::new(),
+        "### 取り込み時間と速度".to_owned(),
+        String::new(),
+        "| N | T(N) の中央値 (s) | 各回の T(N) (s) | MiB/s | イベント/s | S(N) | E(N) | 判定 |"
+            .to_owned(),
+        "|---|---|---|---|---|---|---|---|".to_owned(),
+    ];
+    for level in &scaling.levels {
+        let durations: Vec<String> = level.durations.iter().copied().map(seconds).collect();
+        let judged = match level.meets_criterion {
+            Some(true) => "合格",
+            Some(false) => "不合格",
+            None => NONE,
+        };
+        lines.push(format!(
+            "| {} | {} | {} | {:.2} | {:.0} | {} | {} | {judged} |",
+            level.workers,
+            seconds(level.median),
+            durations.join(", "),
+            level.throughput.bytes_per_second / MIB,
+            level.throughput.events_per_second,
+            ratio(level.speedup),
+            ratio(level.efficiency),
+        ));
+    }
+    lines.extend([
+        String::new(),
+        "### ワーカーの時間の内訳".to_owned(),
+        String::new(),
+        "N ごとに、すべての回とワーカーの時間を合計した。割合は内訳の合計に対する値である。"
+            .to_owned(),
+        String::new(),
+        "| N | S3 からの取得待ち | 展開・パース・正規化 | PubAck 待ち | JetStream の拒否による送信待ち |"
+            .to_owned(),
+        "|---|---|---|---|---|".to_owned(),
+    ]);
+    for level in &scaling.levels {
+        let times = level.worker_times;
+        lines.push(breakdown(
+            level.workers,
+            &[
+                times.fetch_wait,
+                times.decode,
+                times.publish_wait,
+                times.rejected_wait,
+            ],
+        ));
+    }
+    lines.extend([
+        String::new(),
+        "### 分析コンシューマーの時間の内訳".to_owned(),
+        String::new(),
+        "N ごとに、すべての回の時間を合計した。割合は内訳の合計に対する値である。".to_owned(),
+        String::new(),
+        "| N | メッセージの取り出し待ち | pending への追加と確定 | バッチの処理 |".to_owned(),
+        "|---|---|---|---|".to_owned(),
+    ]);
+    for level in &scaling.levels {
+        let times = level.analyzer_times;
+        lines.push(breakdown(
+            level.workers,
+            &[times.fetch_wait, times.commit, times.batch],
+        ));
+    }
+    lines.extend(cpu_lines(scaling));
+    lines.join("\n") + "\n"
+}
+
+fn verdict(scaling: &Scaling) -> String {
+    if scaling.passed() {
+        return "合格".to_owned();
+    }
+    let checked: Vec<&Level> = scaling
+        .levels
+        .iter()
+        .filter(|level| level.workers > 1)
+        .collect();
+    let reason = if checked.is_empty() {
+        "N = 2、3、4 のいずれも計測していない".to_owned()
+    } else if checked.iter().any(|level| level.meets_criterion.is_none()) {
+        "N = 1 を計測していないので S(N) を求められない".to_owned()
+    } else {
+        let failed: Vec<String> = checked
+            .iter()
+            .filter(|level| level.meets_criterion == Some(false))
+            .map(|level| level.workers.to_string())
+            .collect();
+        format!("E(N) が基準を下回った N: {}", failed.join("、"))
+    };
+    format!("不合格（{reason}）")
+}
+
+fn cpu_lines(scaling: &Scaling) -> Vec<String> {
+    let mut lines = vec![
+        String::new(),
+        "### コンテナごとの CPU 使用率".to_owned(),
+        String::new(),
+    ];
+    if scaling.levels.iter().all(|level| level.cpu.is_empty()) {
+        lines.push("CPU 使用率は記録されていない。".to_owned());
+        return lines;
+    }
+    lines.extend([
+        format!(
+            "`docker stats` で 1 秒ごとに取った値で、100% が論理 CPU 1 つに当たる。物理コア 0 の行は \
+             MinIO と NATS の合計で、上限は {:.0}% である。",
+            scaling.server_cpu_limit
+        ),
+        String::new(),
+        "| N | コンテナ | 平均 | 最大 | 標本の数 |".to_owned(),
+        "|---|---|---|---|---|".to_owned(),
+    ]);
+    let servers = format!(
+        "物理コア 0（{} + {}）",
+        Service::Minio.name(),
+        Service::Nats.name()
+    );
+    for level in &scaling.levels {
+        let rows = level
+            .servers_cpu
+            .map(|usage| (servers.clone(), usage))
+            .into_iter()
+            .chain(level.cpu.iter().map(|(name, usage)| (name.clone(), *usage)));
+        for (name, usage) in rows {
+            lines.push(format!(
+                "| {} | {name} | {:.1}% | {:.1}% | {} |",
+                level.workers, usage.mean, usage.max, usage.samples
+            ));
+        }
+    }
+    lines
+}
+
+fn breakdown(workers: u32, times: &[u64]) -> String {
+    let total = times.iter().sum();
+    let cells: Vec<String> = times
+        .iter()
+        .map(|time| match share(*time, total) {
+            Some(share) => format!("{time} ms ({:.1}%)", share * 100.0),
+            None => format!("{time} ms ({NONE})"),
+        })
+        .collect();
+    format!("| {workers} | {} |", cells.join(" | "))
+}
+
+fn seconds(duration: Duration) -> String {
+    format!("{:.3}", duration.as_secs_f64())
+}
+
+fn ratio(value: Option<f64>) -> String {
+    value.map_or_else(|| NONE.to_owned(), |value| format!("{value:.2}"))
 }
