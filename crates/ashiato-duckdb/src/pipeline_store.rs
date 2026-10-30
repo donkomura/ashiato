@@ -82,11 +82,16 @@ impl PipelineStore {
     }
 
     pub fn set_memory_limit(&self, limit: &str) -> Result<(), StoreError> {
-        todo!("{limit}")
+        self.connection.execute("SET memory_limit = ?", [limit])?;
+        Ok(())
     }
 
     pub fn memory_limit(&self) -> Result<String, StoreError> {
-        todo!()
+        Ok(self
+            .connection
+            .query_row("SELECT current_setting('memory_limit')", [], |row| {
+                row.get(0)
+            })?)
     }
 
     // The manifest is listed only when the run starts for the first time. Listing again on a

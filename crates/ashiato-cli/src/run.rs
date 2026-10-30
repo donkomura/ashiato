@@ -27,6 +27,7 @@ use crate::{DATABASE_FILE, load_catalog_from, report_warning, write_output};
 
 const FETCH_MAX: usize = 16;
 const COMMIT_EVERY: usize = 64;
+const MEMORY_LIMIT_VAR: &str = "ASHIATO_DUCKDB_MEMORY_LIMIT";
 
 #[derive(clap::Args)]
 pub(crate) struct RunArgs {
@@ -65,6 +66,11 @@ pub(crate) fn run(args: &RunArgs) -> anyhow::Result<()> {
         .context("the run plan must be a file in the workspace directory")?;
 
     let mut store = PipelineStore::open(&workspace.join(DATABASE_FILE))?;
+    if let Some(limit) = memory_limit()? {
+        store
+            .set_memory_limit(&limit)
+            .with_context(|| format!("failed to apply {MEMORY_LIMIT_VAR}={limit}"))?;
+    }
     let manifest = store.start_run(plan.digest(), || runtime.block_on(source.list(&plan)))?;
     for violation in validate_streaming(&selection.rules, plan.pipeline.batch) {
         eprintln!("warning: {violation}; the rule is skipped");
@@ -361,6 +367,16 @@ async fn analyze_distributed(
     drop(server);
     events.delete().await?;
     Ok(analyzer.into_store())
+}
+
+// The analyzer container of the integration test sets the DuckDB memory_limit below its memory
+// limit (14.1.1 節).
+fn memory_limit() -> anyhow::Result<Option<String>> {
+    match std::env::var(MEMORY_LIMIT_VAR) {
+        Ok(limit) => Ok(Some(limit)),
+        Err(std::env::VarError::NotPresent) => Ok(None),
+        Err(error) => Err(error).with_context(|| format!("failed to read {MEMORY_LIMIT_VAR}")),
+    }
 }
 
 // Each worker has its own decode threads, so the CPUs are divided among the workers.

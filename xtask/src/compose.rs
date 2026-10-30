@@ -14,8 +14,7 @@ use crate::topology::{CpuAssignment, Cpuset};
 pub const RUNTIME_IMAGE: &str = "debian:bookworm-20251229-slim";
 pub const NATS_URL: &str = "nats://nats:4222";
 pub const MINIO_ENDPOINT: &str = "http://minio:9000";
-// TODO: ashiato does not read this variable yet; the analyzer must apply it as the DuckDB
-// memory_limit of 14.1.1 節 before the runs are measured.
+// `ashiato run` applies ASHIATO_DUCKDB_MEMORY_LIMIT as the DuckDB memory_limit (14.1.1 節).
 pub const DUCKDB_MEMORY_LIMIT: &str = "2GB";
 
 const SERVER_MEMORY: &str = "1g";
