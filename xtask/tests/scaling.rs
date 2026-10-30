@@ -6,7 +6,7 @@ use chrono::{TimeZone, Utc};
 use xtask::metrics::{AnalyzerMetrics, AnalyzerPhases, AnalyzerTimes, WorkerMetrics, WorkerTimes};
 use xtask::scaling::{
     CpuUsage, MIN_EFFICIENCY_PERCENT, Run, ScalingError, StatsSample, Throughput, evaluate,
-    ingest_duration, median, parse_docker_stats, rejected_share,
+    ingest_duration, median, parse_docker_stats, rejected_share, report_section,
 };
 
 const START: i64 = 1_730_000_000_000;
@@ -498,4 +498,173 @@ fn runs_without_stats_have_no_cpu_usage() {
     assert_eq!(scaling.levels[0].cpu, BTreeMap::new());
     assert_eq!(scaling.levels[0].servers_cpu, None);
     assert_eq!(scaling.server_cpu_limit, 100.0);
+}
+
+fn analyzer_times(fetch_wait: u64, commit: u64, batch: u64) -> AnalyzerTimes {
+    AnalyzerTimes {
+        fetch_wait,
+        commit,
+        batch,
+    }
+}
+
+fn measured_run(
+    workers: u32,
+    millis: i64,
+    worker_times: WorkerTimes,
+    analyzer_times: AnalyzerTimes,
+    stats: Vec<StatsSample>,
+) -> Run {
+    let mut run = run(workers, millis);
+    run.worker_metrics = (0..workers).map(|id| worker(id, worker_times)).collect();
+    run.analyzer.time_ms = analyzer_times;
+    run.stats = stats;
+    run
+}
+
+const REPORT: &str = "\
+## 速度の確認
+
+データセットは、圧縮後 3145728 バイト、1200 イベントである。合格の基準は、計測した N = 2、3、4 のすべてで E(N) が 0.80 以上であることである（0.80 は 17 節の仮の値）。
+
+結果: 不合格（E(N) が基準を下回った N: 3）
+
+### 取り込み時間と速度
+
+| N | T(N) の中央値 (s) | 各回の T(N) (s) | MiB/s | イベント/s | S(N) | E(N) | 判定 |
+|---|---|---|---|---|---|---|---|
+| 1 | 12.000 | 12.000, 11.000, 13.000 | 0.25 | 100 | 1.00 | 1.00 | — |
+| 2 | 7.500 | 7.000, 8.000 | 0.40 | 160 | 1.60 | 0.80 | 合格 |
+| 3 | 6.000 | 6.000 | 0.50 | 200 | 2.00 | 0.67 | 不合格 |
+
+### ワーカーの時間の内訳
+
+N ごとに、すべての回とワーカーの時間を合計した。割合は内訳の合計に対する値である。
+
+| N | S3 からの取得待ち | 展開・パース・正規化 | PubAck 待ち | JetStream の拒否による送信待ち |
+|---|---|---|---|---|
+| 1 | 100 ms (20.0%) | 300 ms (60.0%) | 50 ms (10.0%) | 50 ms (10.0%) |
+| 2 | 400 ms (25.0%) | 400 ms (25.0%) | 400 ms (25.0%) | 400 ms (25.0%) |
+| 3 | 0 ms (—) | 0 ms (—) | 0 ms (—) | 0 ms (—) |
+
+### 分析コンシューマーの時間の内訳
+
+N ごとに、すべての回の時間を合計した。割合は内訳の合計に対する値である。
+
+| N | メッセージの取り出し待ち | pending への追加と確定 | バッチの処理 |
+|---|---|---|---|
+| 1 | 10 ms (10.0%) | 20 ms (20.0%) | 70 ms (70.0%) |
+| 2 | 0 ms (—) | 0 ms (—) | 0 ms (—) |
+| 3 | 0 ms (—) | 0 ms (—) | 0 ms (—) |
+
+### コンテナごとの CPU 使用率
+
+`docker stats` で 1 秒ごとに取った値で、100% が論理 CPU 1 つに当たる。物理コア 0 の行は MinIO と NATS の合計で、上限は 200% である。
+
+| N | コンテナ | 平均 | 最大 | 標本の数 |
+|---|---|---|---|---|
+| 1 | 物理コア 0（minio + nats） | 80.0% | 80.0% | 1 |
+| 1 | analyzer | 90.0% | 90.0% | 1 |
+| 1 | minio | 50.0% | 50.0% | 1 |
+| 1 | nats | 30.0% | 30.0% | 1 |
+| 1 | worker-1 | 100.0% | 100.0% | 1 |
+";
+
+#[test]
+fn the_report_lists_the_times_the_speed_and_the_values_to_find_the_bottleneck() {
+    let none = WorkerTimes::default;
+    let runs = [
+        measured_run(
+            1,
+            12_000,
+            times(100, 300, 50, 50),
+            analyzer_times(10, 20, 70),
+            vec![sample(&[
+                ("minio", 50.0),
+                ("nats", 30.0),
+                ("analyzer", 90.0),
+                ("worker-1", 100.0),
+            ])],
+        ),
+        measured_run(1, 11_000, none(), AnalyzerTimes::default(), Vec::new()),
+        measured_run(1, 13_000, none(), AnalyzerTimes::default(), Vec::new()),
+        measured_run(
+            2,
+            7_000,
+            times(50, 50, 50, 50),
+            AnalyzerTimes::default(),
+            Vec::new(),
+        ),
+        measured_run(
+            2,
+            8_000,
+            times(150, 150, 150, 150),
+            AnalyzerTimes::default(),
+            Vec::new(),
+        ),
+        measured_run(3, 6_000, none(), AnalyzerTimes::default(), Vec::new()),
+    ];
+
+    let scaling = evaluate(&runs, &dataset(3_145_728, 1_200), 2).unwrap();
+
+    assert_eq!(report_section(&scaling), REPORT);
+}
+
+#[test]
+fn the_report_gives_the_reason_of_a_failure() {
+    let cases: [(&[(u32, i64)], &str); 6] = [
+        (
+            &[(1, 12_000), (2, 7_000), (3, 5_000), (4, 3_750)],
+            "結果: 合格\n",
+        ),
+        (
+            &[(1, 12_000), (2, 7_600), (3, 5_000), (4, 3_751)],
+            "結果: 不合格（E(N) が基準を下回った N: 2、4）\n",
+        ),
+        (
+            &[(1, 12_000), (3, 5_001)],
+            "結果: 不合格（E(N) が基準を下回った N: 3）\n",
+        ),
+        (
+            &[(1, 12_000)],
+            "結果: 不合格（N = 2、3、4 のいずれも計測していない）\n",
+        ),
+        (
+            &[(2, 7_000), (3, 5_000)],
+            "結果: 不合格（N = 1 を計測していないので S(N) を求められない）\n",
+        ),
+        (
+            &[(2, 7_000)],
+            "結果: 不合格（N = 1 を計測していないので S(N) を求められない）\n",
+        ),
+    ];
+    for (measured, expected) in cases {
+        let runs: Vec<Run> = measured
+            .iter()
+            .map(|(workers, millis)| run(*workers, *millis))
+            .collect();
+        let report = report_section(&evaluate(&runs, &dataset(1, 1), 2).unwrap());
+        assert!(report.contains(expected), "{measured:?}\n{report}");
+        assert_eq!(report.matches("結果: ").count(), 1, "{report}");
+    }
+}
+
+#[test]
+fn without_one_worker_or_stats_the_report_leaves_the_values_out() {
+    let runs = [run(2, 6_000), run(3, 4_500)];
+
+    let report = report_section(&evaluate(&runs, &dataset(1, 1), 2).unwrap());
+
+    assert!(
+        report.contains("| 2 | 6.000 | 6.000 | 0.00 | 0 | — | — | — |\n"),
+        "{report}"
+    );
+    assert!(
+        report.contains("| 3 | 4.500 | 4.500 | 0.00 | 0 | — | — | — |\n"),
+        "{report}"
+    );
+    assert!(
+        report.ends_with("### コンテナごとの CPU 使用率\n\nCPU 使用率は記録されていない。\n"),
+        "{report}"
+    );
 }

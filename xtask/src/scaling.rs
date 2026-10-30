@@ -292,3 +292,7 @@ fn summarize(values: &[f64]) -> Option<CpuUsage> {
         samples: values.len(),
     })
 }
+
+pub fn report_section(scaling: &Scaling) -> String {
+    todo!("{scaling:?}")
+}
