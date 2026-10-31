@@ -1,0 +1,16 @@
+run_id: example
+source:
+  kind: s3
+  uri: s3://ashiato-example/AWSLogs/
+  endpoint_url: http://127.0.0.1:9000
+analysis_window:
+  since: 2026-10-01T00:00:00Z
+  until: 2026-10-02T00:00:00Z
+rules: [builtin]
+pipeline:
+  batch: 1h
+  allowed_lateness: 5m
+placement:
+  mode: distributed
+  nats_url: nats://127.0.0.1:4222
+  ingest_workers: 2
