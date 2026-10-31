@@ -1,0 +1,31 @@
+{
+  "Records": [
+    {
+      "eventVersion": "1.09",
+      "userIdentity": {
+        "type": "IAMUser",
+        "principalId": "AIDAEXAMPLEALICE",
+        "arn": "arn:aws:iam::111111111111:user/alice",
+        "accountId": "111111111111",
+        "accessKeyId": "ASIAEXAMPLEALICE",
+        "userName": "alice"
+      },
+      "eventTime": "2026-10-01T10:07:00Z",
+      "eventSource": "cloudtrail.amazonaws.com",
+      "eventName": "StopLogging",
+      "awsRegion": "ap-northeast-1",
+      "sourceIPAddress": "203.0.113.50",
+      "userAgent": "Mozilla/5.0",
+      "requestParameters": {
+        "name": "arn:aws:cloudtrail:ap-northeast-1:111111111111:trail/main"
+      },
+      "responseElements": null,
+      "eventID": "00000000-0000-4000-8000-000000000002",
+      "readOnly": false,
+      "eventType": "AwsApiCall",
+      "managementEvent": true,
+      "recipientAccountId": "111111111111",
+      "eventCategory": "Management"
+    }
+  ]
+}

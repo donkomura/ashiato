@@ -365,7 +365,7 @@ pub fn ashiato(dir: &Path) -> Command {
 pub struct Process(Option<Child>);
 
 impl Process {
-    fn spawn(command: &mut Command) -> Self {
+    pub fn spawn(command: &mut Command) -> Self {
         Self(Some(command.spawn().unwrap()))
     }
 
