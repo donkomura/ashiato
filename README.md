@@ -58,23 +58,13 @@ ashiato processes logs through the following components and stores events in a w
 %%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
 flowchart TD
     cloudtrail["CloudTrail<br/>Log files in S3<br/>or local storage"]
+    download["ashiato-cli<br/>Downloads logs<br/>from S3 to<br/>the workspace"]
+    store["ashiato-duckdb<br/>Normalizes logs and<br/>stores events<br/>in DuckDB"]
+    signals["ashiato-duckdb<br/>Runs the SQL<br/>in signal rules"]
+    core["ashiato-core<br/>Matches signal<br/>sequences against<br/>scenario rules and<br/>scores each<br/>originating principal"]
+    output["ashiato-cli<br/>Writes results<br/>as JSON Lines"]
 
-    subgraph ingest["ashiato ingest"]
-        direction TB
-        download["ashiato-cli<br/>Downloads logs<br/>from S3 to<br/>the workspace"]
-        store["ashiato-duckdb<br/>Normalizes logs and<br/>stores events<br/>in DuckDB"]
-        download --> store
-    end
-
-    subgraph analyze["ashiato analyze"]
-        direction TB
-        signals["ashiato-duckdb<br/>Runs the SQL<br/>in signal rules"]
-        core["ashiato-core<br/>Matches signal<br/>sequences against<br/>scenario rules and<br/>scores each<br/>originating principal"]
-        output["ashiato-cli<br/>Writes results<br/>as JSON Lines"]
-        signals --> core --> output
-    end
-
-    cloudtrail --> ingest --> analyze
+    cloudtrail -->|ashiato ingest| download --> store -->|ashiato analyze| signals --> core --> output
 ```
 
 `ingest` skips files it has already ingested.
