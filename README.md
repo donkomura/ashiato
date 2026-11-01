@@ -55,16 +55,16 @@ ashiato's detection is rule-based, and it ships with 56 signal rules and 9 scena
 ashiato processes logs through the following components and stores events in a workspace, the directory that holds the DuckDB file. `ingest` loads logs into the workspace, and `analyze` analyzes the ingested events.
 
 ```mermaid
-%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false}}}%%
-flowchart TD
+%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false, "rankSpacing": 24, "padding": 8}}}%%
+flowchart LR
     cloudtrail["CloudTrail<br/>Log files in S3<br/>or local storage"]
-    download["ashiato-cli<br/>Downloads logs<br/>from S3 to<br/>the workspace"]
-    store["ashiato-duckdb<br/>Normalizes logs and<br/>stores events<br/>in DuckDB"]
-    signals["ashiato-duckdb<br/>Runs the SQL<br/>in signal rules"]
-    core["ashiato-core<br/>Matches signal<br/>sequences against<br/>scenario rules and<br/>scores each<br/>originating principal"]
-    output["ashiato-cli<br/>Writes results<br/>as JSON Lines"]
+    download["ashiato ingest<br/>(ashiato-cli)<br/>Downloads logs<br/>from S3 to<br/>the workspace"]
+    store["ashiato ingest<br/>(ashiato-duckdb)<br/>Normalizes logs<br/>and stores events<br/>in DuckDB"]
+    signals["ashiato analyze<br/>(ashiato-duckdb)<br/>Runs the SQL<br/>in signal rules"]
+    core["ashiato analyze<br/>(ashiato-core)<br/>Matches signals<br/>to scenario rules<br/>and scores<br/>each principal"]
+    output["ashiato analyze<br/>(ashiato-cli)<br/>Writes results<br/>as JSON Lines"]
 
-    cloudtrail -->|ashiato ingest| download --> store -->|ashiato analyze| signals --> core --> output
+    cloudtrail --> download --> store --> signals --> core --> output
 ```
 
 `ingest` skips files it has already ingested.
