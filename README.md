@@ -33,7 +33,7 @@ GuardDuty suits continuous monitoring, Suzaku suits investigating logs from mult
 - **No volume-based detection fees:** Detects suspicious operations in your own environment, where event volume adds no service charge.
 - **Retroactive detection:** Covers any logs still in S3, including periods before GuardDuty was enabled.
 - **Repeat analysis without query fees:** Reanalyzes ingested logs with different detection conditions and time ranges at no charge per query.
-- **Parallel ingestion:** Splits log ingestion across multiple worker processes in the distributed mode of `ashiato run`.
+- **Parallel ingestion:** Ingests log files in parallel with the `--jobs` option of `ashiato ingest`.
 - **Rule-based detection of chained operations:** Detects linked operations, such as a login without MFA followed by a compute launch, as one attack and traces them to the originating principal, such as an IAM user.
 - **Detection as code:** Publishes detection logic as YAML and SQL rules that each organization can change.
 
@@ -52,24 +52,23 @@ ashiato is not a complete replacement for GuardDuty.
 
 ashiato's detection is rule-based, and it ships with 56 signal rules and 9 scenario rules. A signal rule uses SQL to find a suspicious operation. For example, `cloudtrail_logging_disabled` finds successful `StopLogging` and `DeleteTrail` calls. A scenario rule matches a sequence of signals. For example, `console_takeover_mining` matches when compute resources are launched within one hour of a console login without MFA.
 
-ashiato processes logs through the following components and stores events in a workspace, the directory that holds the DuckDB file. `ingest` loads logs into the workspace, and `analyze` analyzes the ingested events.
+ashiato processes logs with two commands. `ingest` converts logs into events and stores them in a workspace, the directory that holds the DuckDB file, and `analyze` analyzes the stored events.
 
 ```mermaid
-%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false, "rankSpacing": 24, "padding": 8}}}%%
+%%{init: {"htmlLabels": false, "flowchart": {"htmlLabels": false, "rankSpacing": 24}}}%%
 flowchart LR
     cloudtrail["CloudTrail<br/>Log files in S3<br/>or local storage"]
-    download["ashiato ingest<br/>(ashiato-cli)<br/>Downloads logs<br/>from S3 to<br/>the workspace"]
-    store["ashiato ingest<br/>(ashiato-duckdb)<br/>Normalizes logs<br/>and stores events<br/>in DuckDB"]
-    signals["ashiato analyze<br/>(ashiato-duckdb)<br/>Runs the SQL<br/>in signal rules"]
-    core["ashiato analyze<br/>(ashiato-core)<br/>Matches signals<br/>to scenario rules<br/>and scores<br/>each principal"]
-    output["ashiato analyze<br/>(ashiato-cli)<br/>Writes results<br/>as JSON Lines"]
+    ingest["ashiato ingest<br/>Normalizes logs<br/>into events"]
+    workspace[("Workspace<br/>(DuckDB)")]
+    analyze["ashiato analyze<br/>Applies signal and<br/>scenario rules and<br/>scores principals"]
+    output["Results<br/>JSON Lines"]
 
-    cloudtrail --> download --> store --> signals --> core --> output
+    cloudtrail --> ingest --> workspace --> analyze --> output
 ```
 
 `ingest` skips files it has already ingested.
 
-`ashiato run`, which handles large datasets, processes logs through a different path from this diagram. See [`examples/pipeline/README.md`](examples/pipeline/README.md) for details.
+For processing large datasets, see [`examples/pipeline/README.md`](examples/pipeline/README.md).
 
 ashiato skips rules whose required data is missing and reports them as `rule_skipped` records. These records show whether an empty result means that nothing was found or that a rule could not run.
 
