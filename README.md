@@ -1,89 +1,87 @@
 # ashiato
 
-ashiato は、AWS CloudTrail ログを分析する self-hosted の監査ログ分析ツールである。S3 に保存された過去のログに対して、公開された検知ルールを自前の環境で繰り返し実行できる。検知結果には [MITRE ATT&CK v20](https://attack.mitre.org/resources/updates/) の技術の ID を付けられる。
+ashiato is a self-hosted audit log analysis tool for AWS CloudTrail logs. It runs open detection rules repeatedly against historical logs stored in S3. Detection results can carry [MITRE ATT&CK v20](https://attack.mitre.org/resources/updates/) technique IDs.
 
-## なぜ開発するのか
+## Why ashiato
 
-CloudTrail の管理イベントは、最初のコピーであれば [CloudTrail の料金](https://aws.amazon.com/cloudtrail/pricing/)なしで S3 に配信できる。そのため、監査ログを S3 に貯めること自体は始めやすい。しかし、貯めたログを検知や調査に使おうとすると、ログの量や調査の回数に応じて費用が増えていく。
+The first copy of CloudTrail management events can be delivered to S3 without [CloudTrail charges](https://aws.amazon.com/cloudtrail/pricing/), so it is easy to start accumulating audit logs in S3. However, detecting and investigating with AWS services costs more as the log volume and the number of investigations grow.
 
-検知に Amazon GuardDuty を使う場合、費用は分析したイベントの量で決まる。[AWS の料金例](https://aws.amazon.com/guardduty/pricing/)では、4,000 万件の CloudTrail 管理イベントの分析に月 160 ドルかかる。さらに、GuardDuty は[有効にした後の活動だけを分析する](https://aws.amazon.com/guardduty/faqs/)ので、有効にする前のログは検知の対象にならない。
+When you detect with Amazon GuardDuty, the charge for analyzing CloudTrail management events depends on the event volume. In [AWS's pricing example](https://aws.amazon.com/guardduty/pricing/), analyzing 40 million management events per month costs $160. In addition, GuardDuty [analyzes only the activity that starts after it is enabled](https://aws.amazon.com/guardduty/faqs/), so logs from before that point are not covered by its detection.
 
-過去のログを調べるには、Amazon Athena で S3 のログを検索する方法がある。Athena の費用は読み取ったデータ量で決まり、[AWS の料金例](https://aws.amazon.com/athena/pricing/)では 1 TB あたり 5 ドルである。調査では条件を変えて検索を繰り返すので、圧縮後で 1 TB のログを全件読み取る検索を 10 回実行すると 50 ドルかかる。パーティションを設定すれば読み取る範囲を狭められるが、そのための準備が調査の前に必要になる。ここまでの料金は 2026 年 11 月時点の情報で、リージョンによって異なる。
+To look at historical logs, you can search them in S3 with Amazon Athena. Athena's charge depends on the amount of data scanned, and [AWS's pricing example](https://aws.amazon.com/athena/pricing/) uses $5 per TB. Investigations repeat searches with changing conditions. Running a search that scans all of 1 TB of compressed logs 10 times comes to $50. Partitioning narrows the range to scan, but that preparation has to happen before the investigation. The prices above are as of November 2026 and vary by Region.
 
-このように、GuardDuty では過去のログを検知にかけられず、Athena では条件を変えて調べ直すたびに費用が増える。過去のログを繰り返し調べるには、一度用意したログに対して、検知の条件と期間を検索の料金なしで変えられる手段が必要である。ashiato は、ログを手元に取り込み、以後の分析をそのデータに対して実行する。条件や期間を変えても、イベントの量や検索の回数に応じたサービスの料金はかからない。
+In short, GuardDuty cannot cover logs from before it was enabled, and Athena costs more each time you search again with different conditions. Investigating historical logs repeatedly requires a way to change the detection conditions and time range on logs you have already prepared, without search charges. ashiato ingests logs into your own environment and runs subsequent analysis against that data. Changing the detection conditions or time range incurs no service charges based on event volume or search count.
 
-## 他のツールとの比較
+## Comparison with other tools
 
 | | ashiato | Amazon GuardDuty | Amazon Athena | [Suzaku](https://github.com/Yamato-Security/suzaku) |
 |---|---|---|---|---|
-| 実行環境 | 自前の環境 | AWS のマネージドサービス | AWS のマネージドサービス | 自前の環境 |
-| 主な費用 | 計算資源、S3 の読み取り | 分析したデータ量に応じた料金 | 読み取ったデータ量に応じた料金 | 計算資源、ログの取得 |
-| 対象のログ | CloudTrail | CloudTrail、VPC フローログ、DNS ログなど | S3 上のログ | CloudTrail、Azure、Entra ID、M365、Google Workspace |
-| 有効にする前のログの分析 | できる | できない | できる | ログファイルがあればできる |
-| 常時の監視 | しない | する | しない | しない |
-| 検知の条件 | YAML と SQL の組み込みルール 65 個 | AWS が提供する | 利用者が SQL を書く | Sigma ルール |
-| 攻撃の連鎖の検知 | シナリオのルール | Extended Threat Detection | 利用者が SQL を書く | Sigma の相関ルール |
+| Runs on | Your own environment | AWS managed service | AWS managed service | Your own environment |
+| Main costs | Compute, S3 reads | Charged by data analyzed | Charged by data scanned | Compute, log retrieval |
+| Log sources | CloudTrail | CloudTrail, VPC Flow Logs, DNS logs, and more | Logs in S3 | CloudTrail, Azure, Entra ID, M365, Google Workspace |
+| Historical log analysis | Yes, if the log files are available | Does not analyze logs from before it was enabled | Yes, if the logs are in S3 | Yes, if the log files are available |
+| Continuous monitoring | No | Yes | No | No |
+| Detection logic | 65 built-in YAML and SQL rules | Provided by AWS | SQL written by the user | 796 Sigma rules |
+| Attack sequence detection | Scenario rules | Extended Threat Detection | SQL written by the user | Sigma correlation rules |
 
-常時の監視が必要なら GuardDuty が適している。複数のクラウドのログを調べたい場合は Suzaku が適している。ashiato は、S3 に貯めた CloudTrail ログを、組織に合わせたルールで繰り返し分析したい場合に適している。
+GuardDuty suits continuous monitoring, Suzaku suits investigating logs from multiple clouds, and ashiato suits repeatedly analyzing CloudTrail logs accumulated in S3 with rules adapted to your organization.
 
-## ashiato が解決すること
+## What ashiato solves
 
-- イベントの量に応じた検知サービスの料金なしで、CloudTrail ログを検知にかける。
-- S3 に残っているログを、GuardDuty を有効にする前の期間も含めて検知にかける。
-- 一度取り込んだログを、期間や条件を変えて、検索の料金なしで何度でも分析する。
-- パイプラインでは、複数の取り込みワーカーに分担させて大量のログを取り込む。
-- MFA を使わないログインの後に計算資源を起動するといった、連動した複数の操作を一連の攻撃として検出し、起点の主体を見つける。
-- 検知の条件を YAML と SQL のルールとして公開し、組織ごとの変更に対応する。
+- Detects suspicious operations in CloudTrail logs without detection service charges based on event volume.
+- Covers any logs remaining in S3, including periods before GuardDuty was enabled.
+- Analyzes ingested logs as many times as needed, with different detection conditions and time ranges, without search charges.
+- Distributes log ingestion across multiple worker processes in the distributed placement of `ashiato run`.
+- Detects linked operations, such as launching compute resources after a login without MFA, as a single attack, and finds the principal at their origin (such as an IAM user).
+- Publishes detection logic as YAML and SQL rules, and supports changes for each organization.
 
-分析にサービスの料金はかからないが、S3 からログを読み取るリクエストとデータ転送の料金、ashiato を実行する計算資源の費用はかかる。
+Analysis incurs no service charges, but S3 requests and data transfer for reading the logs, and the compute that runs ashiato, are still billed.
 
-### 解決しないこと
+### What ashiato does not solve
 
-ashiato は GuardDuty を完全に置き換えるものではない。
+ashiato is not a complete replacement for GuardDuty.
 
-- ashiato は CloudTrail ログだけを分析する。VPC フローログ、DNS ログ、実行環境の挙動は分析しない。
-- ashiato は外部の脅威情報を参照せず、ルールに書いた条件だけを検知する。
-- ashiato は常駐しない。指定した期間を分析して終了する。通知の機能もない。
-- S3 のデータイベントを必要とするルールは、証跡でデータイベントを記録していなければ実行できない。データイベントの配信には CloudTrail の料金がかかる。
+- ashiato analyzes only CloudTrail logs, not VPC Flow Logs, DNS logs, or runtime behavior.
+- ashiato does not consult external threat intelligence and detects only what the rules describe.
+- ashiato does not run as a daemon. It analyzes the specified period and exits. It has no notification feature either.
+- Rules that require S3 data events cannot run unless your trail records them. Delivering data events incurs CloudTrail charges.
 
-## どうやって解決するのか
+## How it works
 
-ashiato は、次のコンポーネントを経由してログを処理する。取り込みの経路は、取り込みと分析を別々に実行する `ingest` と、1 回の実行で両方を行う `run` の 2 つがある。
+ashiato detects with rules. There are two kinds, and it currently ships with 56 signal rules and 9 scenario rules. Signal rules detect a suspicious operation with SQL. For example, `cloudtrail_logging_disabled` detects successful `StopLogging` and `DeleteTrail` calls. Scenario rules match a sequence of signals. For example, `console_takeover_mining` matches when compute resources are launched within one hour of a console login without MFA.
+
+ashiato processes logs through the following components and stores events in a workspace (the directory that holds the DuckDB file). The path differs between ingesting with `ingest` and then analyzing with `analyze`, and doing both in one execution with `run`.
 
 ```mermaid
 flowchart TD
-    cloudtrail["CloudTrail<br/>S3 またはローカルのログファイル"]
-    cli_ingest["ashiato-cli<br/>S3 のログをワークスペースにダウンロードする"]
-    ingest["ashiato-ingest<br/>ログを読み、イベントに正規化する"]
-    transport["ashiato-pipeline / ashiato-nats<br/>イベントをパーティションごとに受け渡す"]
-    duckdb["ashiato-duckdb<br/>イベントを DuckDB に保存し、ルールの SQL で兆候を検出する"]
-    core["ashiato-core<br/>兆候からシナリオを照合し、起点の主体ごとに点数を付ける"]
-    output["ashiato-cli<br/>結果を JSON Lines で出力する"]
+    cloudtrail["CloudTrail<br/>Log files in S3 or local storage"]
+    cli_ingest["ashiato-cli<br/>Downloads logs from S3 to the workspace"]
+    ingest["ashiato-ingest<br/>Reads logs and normalizes them into events"]
+    transport["ashiato-pipeline / ashiato-nats<br/>Passes events along by partition"]
+    duckdb["ashiato-duckdb<br/>Stores events in DuckDB and detects signals with the SQL in rules"]
+    core["ashiato-core<br/>Matches signal sequences against scenarios and scores each origin principal"]
+    output["ashiato-cli<br/>Writes results as JSON Lines"]
 
     cloudtrail -->|ingest| cli_ingest --> duckdb
     cloudtrail -->|run| ingest --> transport --> duckdb
     duckdb --> core --> output
 ```
 
-ワークスペースは、取り込んだイベントを保存するディレクトリである。取り込み済みのファイルは次回の取り込みで読み飛ばす。
+`ingest` skips files that it has already ingested on the next execution.
 
-ルールには 2 種類ある。兆候（signal）のルールは、不審な操作を SQL で検出する。たとえば `cloudtrail_logging_disabled` は、`StopLogging` や `DeleteTrail` の成功を検出する。シナリオ（scenario）のルールは、複数の兆候の並びを照合する。たとえば `console_takeover_mining` は、MFA を使わないコンソールへのログインから 1 時間以内に計算資源が起動された場合に一致する。
+Rules whose required data is missing are not run, and are reported as `rule_skipped` records. This distinguishes an empty result that means no attack was found from one that means the check could not run.
 
-現在は 56 個の兆候のルールと 9 個のシナリオのルールを組み込んでいる。
+### Security framework support
 
-必要なデータがないルールは実行せず、`rule_skipped` 記録として出力する。結果が空だった場合に、攻撃がなかったのか、検査できなかったのかを区別するためである。
+A ruleset is a definition that selects and lists the rules to run. If you specify nothing, ashiato runs the `default` ruleset, which contains 42 rules.
 
-### セキュリティフレームワークへの対応
+Running a ruleset tied to a framework adds that framework's item IDs to detection results. ashiato currently ships with the `attack-v20` ruleset for MITRE ATT&CK v20, which maps 64 rules to 46 techniques and sub-techniques. The mapping is published as a file, so you can check how each rule relates to each technique. However, a mapping does not mean that every procedure of that technique is detected.
 
-ルールセットは、実行するルールを選んで列挙した定義である。何も指定しなければ、42 個のルールを含む `default` ルールセットを実行する。
+## Usage
 
-フレームワークに対応したルールセットで実行すると、検知結果にそのフレームワークの項目の ID が付く。現在は MITRE ATT&CK v20 に対応した `attack-v20` ルールセットを組み込んでいて、64 個のルールを 46 件の技術とサブ技術に対応付けている。対応はファイルとして公開しているので、どのルールがどの技術に対応するかを確認できる。これは、対応付けた技術のすべての手口を検知できることを意味しない。
+The following example assumes that `ashiato` and `jq` are installed. It uses the bundled sample logs, so no AWS account is required. The sample contains a login without MFA and a trail being stopped.
 
-## 使い方
-
-同梱のサンプルのログを使うので、AWS のアカウントは必要ない。サンプルには、MFA を使わないログインと証跡の停止が記録されている。出力の絞り込みには `jq` を使う。
-
-リポジトリのルートで次を実行する。
+Run the following from the repository root.
 
 ```sh
 ./examples/pipeline/make-logs.sh /tmp/ashiato-demo/logs
@@ -93,18 +91,20 @@ ashiato analyze --workspace /tmp/ashiato-demo/case \
   | jq -c 'select(.type == "signal") | {signal_id, severity, region, start_time}'
 ```
 
-検出した兆候が 1 行ずつ出力される。
+Each detected signal is printed on its own line.
 
 ```json
 {"signal_id":"console_login_without_mfa","severity":"medium","region":"us-east-1","start_time":"2026-10-01T10:01:00Z"}
 {"signal_id":"cloudtrail_logging_disabled","severity":"high","region":"ap-northeast-1","start_time":"2026-10-01T10:07:00Z"}
 ```
 
-自分のログを分析するときは、`--source` に `s3://<バケット>/AWSLogs/` を指定し、`--since` と `--until` に分析する期間を指定する。
+To analyze your own logs, set `--source` to `s3://<bucket>/AWSLogs/`, and set `--since` and `--until` to the period to analyze. S3 credentials are read through the default method of the AWS SDK.
 
-## ドキュメント
+## Documentation
 
-- [検知結果の分析の手順](docs/analysis-method.md)
-- [ルールセット](docs/rulesets.md)
-- [分散配置でのパイプラインの実行例](examples/pipeline/README.md)
-- 開発者向けの試験の手順：[結合テスト](docs/integration-testing.md)、[S3](docs/s3-testing.md)、[NATS](docs/nats-testing.md)、[flaws.cloud のデータセット](docs/flaws-cloud.md)
+The following documents are written in Japanese.
+
+- [Analyzing detection results](docs/analysis-method.md)
+- [Rulesets](docs/rulesets.md)
+- [Running the pipeline in a distributed placement](examples/pipeline/README.md)
+- Testing guides for developers: [integration testing](docs/integration-testing.md), [S3](docs/s3-testing.md), [NATS](docs/nats-testing.md), [the flaws.cloud dataset](docs/flaws-cloud.md)
