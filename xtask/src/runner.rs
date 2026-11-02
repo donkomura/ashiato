@@ -127,10 +127,20 @@ fn upload(setup: &MinioSetup, dir: &Path) -> anyhow::Result<()> {
 }
 
 pub fn build_ashiato() -> anyhow::Result<AshiatoBinary> {
+    build_ashiato_with(release_build(), None)
+}
+
+pub fn build_ashiato_with(
+    args: Vec<String>,
+    rustflags: Option<&str>,
+) -> anyhow::Result<AshiatoBinary> {
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let output = Command::new(cargo)
-        .args(release_build())
-        .current_dir(repository())
+    let mut command = Command::new(cargo);
+    command.args(args).current_dir(repository());
+    if let Some(rustflags) = rustflags {
+        command.env("RUSTFLAGS", rustflags);
+    }
+    let output = command
         .stderr(Stdio::inherit())
         .output()
         .context("failed to run cargo")?;
