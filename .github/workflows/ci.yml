@@ -13,7 +13,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: v1-rust
       - run: cargo fmt --all --check
-      - run: cargo clippy --workspace --all-targets -- -D warnings
-      - run: cargo test --workspace
+      - run: cargo clippy --workspace --all-targets --profile ci -- -D warnings
+      - run: cargo nextest run --workspace --cargo-profile ci
+      - run: cargo test --workspace --doc --profile ci
