@@ -183,7 +183,7 @@ fn count_by(lines: &[Value], kind: &str, id_field: &str) -> BTreeMap<String, usi
 }
 
 #[test]
-#[ignore = "needs the flaws.cloud dataset and Docker for MinIO; see docs/flaws-cloud.md"]
+#[ignore = "needs the flaws.cloud dataset and Docker for MinIO; see README.md"]
 fn flaws_cloud_dataset_is_streamed_from_s3() {
     let dataset = env::var_os(DATASET_ENV)
         .unwrap_or_else(|| panic!("set {DATASET_ENV} to the extracted dataset directory"));

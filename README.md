@@ -114,3 +114,128 @@ The command prints one line for each detected signal.
 ```
 
 To analyze your own logs, set `--source` to `s3://<bucket>/AWSLogs/` and set `--since` and `--until` to the period to analyze. ashiato reads S3 credentials through the AWS SDK's default credential chain.
+
+### Filtering results
+
+An account with many detections produces more output than you can read record by record. Start with a summary to see the overall picture, then narrow down to individual records, beginning with the highest severity.
+
+`--severity` outputs only signals and scenario matches of the listed severities (`low`, `medium`, `high`, `critical`). `--summary` groups them by kind, rule ID, and originating principal into one `summary` record per group, which replaces the individual records. `summary` records are sorted by severity, highest first, then by count, largest first. Signals are included in the summary, so `--emit-signals` is not needed.
+
+```sh
+ashiato analyze --workspace case --since 2026-09-01 --until 2026-10-01 \
+  --summary --severity critical,high
+```
+
+| Key | Meaning |
+|---|---|
+| `kind` | `signal` or `scenario_match` |
+| `rule_id`, `severity`, `origin` | The rule and originating principal of the group |
+| `count` | Number of signals or scenario matches in the group |
+| `first_seen`, `last_seen` | Times of the first and last evidence events |
+| `source_ips` | Number of source IP addresses in the evidence |
+| `events` | Number of distinct evidence events |
+
+Separate attacks on the same principal can end up in one line. A line with a long span between `first_seen` and `last_seen`, or with many `source_ips`, may contain several attacks. To separate them, filter the `--emit-signals` output by rule and principal, then compare source IP addresses and times.
+
+```sh
+ashiato analyze --workspace case --since 2026-09-01 --until 2026-10-01 \
+  --emit-signals --severity critical,high \
+  | jq -c 'select(.type == "signal" and .signal_id == "compute_launch_attempts"
+                  and .origin.id == "iam_user:arn:aws:iam::111111111111:user/alice")
+           | {start_time, source_ip, attrs}'
+```
+
+You can look up evidence events by `event_id` in the `events` table of `ashiato.duckdb` in the workspace.
+
+Work done by the account owner also produces signals. To tell whether an operation came from the owner, check whether the source IP address was used during the baseline period and whether the owner performed other operations at the same time.
+
+`rule_skipped` records are output even with `--summary` or `--severity`. The `data` field of the `run` record holds the number of events in the analysis period (`events`) and whether S3 data events exist (`s3_data_events`).
+
+### Selecting rulesets
+
+If you specify neither a ruleset nor a rule, ashiato runs the `default` ruleset.
+
+| Option | Meaning |
+|---|---|
+| `--ruleset <id>[,<id>...]` | Rulesets to run. With several rulesets, ashiato runs the union of their rules |
+| `--rule <id>[,<id>...]` | Narrows the selected rulesets to these rules. Specifying a scenario also runs the signals of its steps. Specifying a rule outside the rulesets is an error |
+| `--rulesets <dir>` | Directory of manifests to read in addition to the embedded rulesets. A manifest with the same ID replaces the existing ruleset |
+| `--rules <dir>` | Adds rules and replaces rules with the same ID. Added rules that belong to no ruleset join `default` |
+
+`ashiato rulesets list` lists the rulesets. `ashiato rulesets show <id>` outputs the ID, kind, severity, tactic, and `refs` of each rule in a ruleset. Both commands output JSON Lines.
+
+When a ruleset has a framework, `signal` and `scenario_match` records carry the matching item IDs in `refs`.
+
+```json
+{"type":"signal","signal_id":"cloudtrail_logging_disabled","refs":[{"ruleset":"attack-v20","ids":["T1685.002"]}]}
+```
+
+A ruleset manifest looks like the following. `framework` and `refs` are optional, and `refs` is allowed only in a ruleset with a `framework`. `framework.kind` accepts only `mitre_attack`.
+
+```yaml
+id: attack-v20
+title: MITRE ATT&CK v20 Enterprise (IaaS, Identity Provider)
+framework:
+  kind: mitre_attack
+  version: "20.0"
+  url: https://attack.mitre.org/versions/v20/
+rules:
+  - id: cloudtrail_logging_disabled
+    refs: [T1685.002]
+```
+
+The signals that a scenario's steps refer to must be in the same ruleset as the scenario. `ashiato rules validate` also checks that a ruleset lists no missing rules and that no scenario lacks its signals. `ashiato rules test --ruleset <id>` tests only the fixtures of the rules in that ruleset.
+
+## Testing
+
+`cargo test --workspace` runs the tests that need neither Docker nor an external dataset. The tests that do are marked `#[ignore]`. Run them with the following commands.
+
+```sh
+cargo test -p ashiato-ingest --test s3 -- --ignored
+cargo test -p ashiato-cli --test run_s3 -- --ignored
+cargo test -p ashiato-nats -- --ignored
+cargo test -p ashiato-cli --test distributed --test distributed_failures --test example_pipeline -- --ignored
+cargo test -p xtask -- --ignored
+```
+
+These tests need Docker. Each test starts its own containers and removes them when it ends. The images are pinned in `crates/ashiato-testkit/src/minio.rs` and `crates/ashiato-testkit/src/nats.rs`. If a test process is killed, containers can remain. Remove them with the following commands.
+
+```sh
+docker rm --force $(docker ps --quiet --filter label=ashiato-test=minio)
+docker rm --force $(docker ps --quiet --filter label=ashiato-test=nats)
+```
+
+### Test with the flaws.cloud dataset
+
+`crates/ashiato-cli/tests/flaws.rs` puts the flaws.cloud CloudTrail logs [published by Summit Route](https://summitroute.com/blog/2020/10/09/public_dataset_of_cloudtrail_logs_from_flaws_cloud/) into MinIO and runs `ashiato run` to completion. The dataset is not in the repository, so download it first.
+
+```sh
+mkdir -p ~/datasets/flaws && cd ~/datasets/flaws
+curl -LO https://summitroute.com/downloads/flaws_cloudtrail_logs.tar
+tar -xf flaws_cloudtrail_logs.tar
+```
+
+```sh
+ASHIATO_FLAWS_DIR=~/datasets/flaws/flaws_cloudtrail_logs \
+  cargo test --release -p ashiato-cli --test flaws -- --ignored --nocapture
+```
+
+To change the analysis period, set the environment variables `ASHIATO_FLAWS_SINCE` and `ASHIATO_FLAWS_UNTIL`.
+
+### Integration tests of the distributed placement
+
+`cargo xtask integration` runs the ingest workers, the NATS server, the analysis consumer, and MinIO in separate containers with Docker Compose. It needs Docker Compose v2 and a CPU with at least 6 physical cores.
+
+```sh
+cargo xtask integration correctness --dataset a
+cargo xtask integration correctness --dataset a-no-data-events
+cargo xtask integration scaling --dataset b --workers 1,2,3,4 --repeat 3
+```
+
+`correctness` compares each run, including runs with injected failures, against a reference run and writes a report to `target/integration/report.md`. `scaling` measures ingestion speed for each number of workers and writes a report to `target/integration/scaling-report.md`. Both exit with a nonzero status if a run fails its criteria. To shrink the dataset, pass an option such as `--scale 0.01`.
+
+The MinIO volumes that hold the datasets stay for the next run. Remove them when you no longer need them.
+
+```sh
+docker volume rm $(docker volume ls --quiet --filter label=ashiato-integration=minio)
+```

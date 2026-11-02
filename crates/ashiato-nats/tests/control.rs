@@ -79,7 +79,7 @@ async fn connect(nats: &Nats) -> async_nats::Client {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for the NATS server; see docs/nats-testing.md"]
+#[ignore = "needs Docker for the NATS server; see README.md"]
 async fn a_manifest_larger_than_a_reply_is_returned_over_several_requests() {
     let nats = Nats::start();
     let client = connect(&nats).await;
@@ -117,7 +117,7 @@ async fn a_manifest_larger_than_a_reply_is_returned_over_several_requests() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for the NATS server; see docs/nats-testing.md"]
+#[ignore = "needs Docker for the NATS server; see README.md"]
 async fn the_plan_of_a_worker_and_the_committed_positions_are_answered() {
     let nats = Nats::start();
     let client = connect(&nats).await;
@@ -160,7 +160,7 @@ async fn the_plan_of_a_worker_and_the_committed_positions_are_answered() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for the NATS server; see docs/nats-testing.md"]
+#[ignore = "needs Docker for the NATS server; see README.md"]
 async fn the_time_of_the_first_plan_answered_is_marked() {
     let nats = Nats::start();
     let client = connect(&nats).await;
@@ -193,7 +193,7 @@ async fn the_time_of_the_first_plan_answered_is_marked() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for the NATS server; see docs/nats-testing.md"]
+#[ignore = "needs Docker for the NATS server; see README.md"]
 async fn a_worker_waits_until_the_analyzer_answers() {
     let nats = Nats::start();
     let client = connect(&nats).await;
@@ -214,7 +214,7 @@ async fn a_worker_waits_until_the_analyzer_answers() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for the NATS server; see docs/nats-testing.md"]
+#[ignore = "needs Docker for the NATS server; see README.md"]
 async fn the_last_published_position_is_read_from_the_stream() {
     let nats = Nats::start();
     let client = connect(&nats).await;

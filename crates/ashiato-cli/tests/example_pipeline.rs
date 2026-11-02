@@ -84,7 +84,7 @@ fn make_logs_writes_one_partition_per_region_in_the_analysis_window() {
 // The servers of the example listen on fixed ports, but the test servers listen on free ones,
 // so only the two addresses are rewritten and the rest of the example plan runs as written.
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn the_example_reports_the_signals_written_in_its_readme() {
     let minio = Minio::start();
     let nats = Nats::start();

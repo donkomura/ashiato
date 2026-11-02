@@ -188,7 +188,7 @@ fn run(plan: &Path) -> Vec<Value> {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO; see docs/s3-testing.md"]
+#[ignore = "needs Docker for MinIO; see README.md"]
 fn run_from_s3_gives_the_same_output_as_from_the_local_copy() {
     let minio = Minio::start();
     let case = Case::new();

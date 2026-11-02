@@ -13,7 +13,7 @@ const SMALL_MESSAGES: &str = "  max_messages_per_partition: 2\n  max_message_siz
 const BIG_FILE_RECORDS: u64 = 20;
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn a_distributed_run_gives_the_same_output_and_tables_as_a_single_process() {
     let cluster = Cluster::start();
     let (reference, expected) = cluster.run_single_process();
@@ -50,7 +50,7 @@ fn a_distributed_run_gives_the_same_output_and_tables_as_a_single_process() {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn a_worker_stopped_inside_a_file_resumes_and_gives_the_same_output() {
     let cluster = Cluster::start();
     let (reference, expected) = cluster.run_single_process();
@@ -91,7 +91,7 @@ fn a_worker_stopped_inside_a_file_resumes_and_gives_the_same_output() {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn a_worker_id_outside_the_plan_is_an_error() {
     let cluster = Cluster::start();
     let plan = cluster.distributed_plan("unknown-worker", 2, BROKER);

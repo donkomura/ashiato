@@ -21,7 +21,7 @@ fn reference(cluster: &Cluster) -> Reference {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn f1_a_worker_stopped_and_started_again_gives_the_same_output() {
     let cluster = Cluster::start();
     let reference = reference(&cluster);
@@ -44,7 +44,7 @@ fn f1_a_worker_stopped_and_started_again_gives_the_same_output() {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn f2_a_restart_of_the_nats_server_gives_the_same_output() {
     let cluster = Cluster::start();
     let reference = reference(&cluster);
@@ -65,7 +65,7 @@ fn f2_a_restart_of_the_nats_server_gives_the_same_output() {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn f3_the_analyzer_stopped_and_started_again_gives_the_same_output() {
     let cluster = Cluster::start();
     let reference = reference(&cluster);
@@ -88,7 +88,7 @@ fn f3_the_analyzer_stopped_and_started_again_gives_the_same_output() {
 }
 
 #[test]
-#[ignore = "needs Docker for MinIO and NATS; see docs/nats-testing.md"]
+#[ignore = "needs Docker for MinIO and NATS; see README.md"]
 fn f4_a_worker_started_late_gives_the_same_output() {
     let cluster = Cluster::start();
     let reference = reference(&cluster);
