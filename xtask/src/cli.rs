@@ -1,7 +1,10 @@
+use std::path::PathBuf;
+
 use anyhow::ensure;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 
 use crate::correctness::{Options, REPORT_FILE, dataset_spec, integration_dir};
+use crate::dist;
 use crate::speed;
 use crate::topology::MAX_WORKERS;
 
@@ -16,6 +19,32 @@ pub struct Cli {
 pub enum Command {
     #[command(subcommand)]
     Integration(Integration),
+    Dist(DistArgs),
+}
+
+#[derive(Debug, PartialEq, Args)]
+pub struct DistArgs {
+    #[arg(long, value_enum)]
+    pub target: DistTarget,
+    #[arg(long, default_value = "target/dist")]
+    pub output: PathBuf,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum DistTarget {
+    #[value(name = "x86_64-unknown-linux-gnu")]
+    X86_64,
+    #[value(name = "aarch64-unknown-linux-gnu")]
+    Aarch64,
+}
+
+impl DistTarget {
+    pub fn triple(self) -> &'static str {
+        match self {
+            Self::X86_64 => "x86_64-unknown-linux-gnu",
+            Self::Aarch64 => "aarch64-unknown-linux-gnu",
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Subcommand)]
@@ -72,6 +101,11 @@ pub fn run(cli: Cli) -> anyhow::Result<()> {
     match cli.command {
         Command::Integration(Integration::Correctness(args)) => correctness(&args),
         Command::Integration(Integration::Scaling(args)) => scaling(&args),
+        Command::Dist(args) => {
+            let archive = dist::dist(&args)?;
+            eprintln!("wrote {}", archive.display());
+            Ok(())
+        }
     }
 }
 

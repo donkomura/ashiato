@@ -1,14 +1,49 @@
 use clap::Parser;
+use std::path::PathBuf;
+
 use xtask::cli::{
-    Cli, Command, CorrectnessArgs, CorrectnessDataset, Integration, ScalingArgs, ScalingDataset,
-    parse_scale,
+    Cli, Command, CorrectnessArgs, CorrectnessDataset, DistArgs, DistTarget, Integration,
+    ScalingArgs, ScalingDataset, parse_scale,
 };
 
 fn parse(args: &[&str]) -> Result<Integration, clap::Error> {
-    let Cli {
-        command: Command::Integration(integration),
-    } = Cli::try_parse_from(["xtask", "integration"].iter().chain(args))?;
+    let cli = Cli::try_parse_from(["xtask", "integration"].iter().chain(args))?;
+    let Command::Integration(integration) = cli.command else {
+        panic!("expected an integration command");
+    };
     Ok(integration)
+}
+
+fn parse_dist(args: &[&str]) -> Result<DistArgs, clap::Error> {
+    let cli = Cli::try_parse_from(["xtask", "dist"].iter().chain(args))?;
+    let Command::Dist(dist) = cli.command else {
+        panic!("expected the dist command");
+    };
+    Ok(dist)
+}
+
+#[test]
+fn dist_writes_under_target_unless_told_otherwise() {
+    assert_eq!(
+        parse_dist(&["--target", "x86_64-unknown-linux-gnu"]).unwrap(),
+        DistArgs {
+            target: DistTarget::X86_64,
+            output: PathBuf::from("target/dist"),
+        }
+    );
+    assert_eq!(
+        parse_dist(&["--target", "aarch64-unknown-linux-gnu", "--output", "out"]).unwrap(),
+        DistArgs {
+            target: DistTarget::Aarch64,
+            output: PathBuf::from("out"),
+        }
+    );
+}
+
+#[test]
+fn dist_rejects_targets_whose_loader_does_not_read_origin() {
+    assert!(parse_dist(&["--target", "aarch64-apple-darwin"]).is_err());
+    assert!(parse_dist(&[]).is_err());
 }
 
 #[test]

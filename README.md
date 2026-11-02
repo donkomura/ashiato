@@ -79,6 +79,20 @@ A ruleset lists the rules to run. By default, ashiato runs the `default` ruleset
 
 Running a ruleset tied to a framework adds that framework's item IDs to detection results. ashiato ships with the `attack-v20` ruleset for MITRE ATT&CK v20, which maps 64 rules to 46 techniques and sub-techniques. The mapping is published as a file, so you can check how each rule relates to each technique. However, a mapping does not mean that every procedure of that technique is detected.
 
+## Installation
+
+[GitHub Releases](https://github.com/donkomura/ashiato/releases) provides archives for Linux on x86_64 and arm64. The archives are built on Ubuntu 26.04, so they need a glibc at least as new as the one in that release.
+
+```sh
+version=0.1.0
+target=x86_64-unknown-linux-gnu
+curl -fsSLO "https://github.com/donkomura/ashiato/releases/download/v$version/ashiato-$version-$target.tar.gz"
+tar -xzf "ashiato-$version-$target.tar.gz"
+export PATH="$PWD/ashiato-$version-$target/bin:$PATH"
+```
+
+`bin/ashiato` loads `lib/libduckdb.so` from the same archive by a relative path, so keep `bin` and `lib` side by side.
+
 ## Usage
 
 The following example assumes that `ashiato` and `jq` are installed. It uses the bundled sample logs, so no AWS account is required. The sample contains a console login without MFA and a `StopLogging` call.

@@ -4,9 +4,9 @@ use serde::Deserialize;
 
 use crate::compose::AshiatoBinary;
 
-const BINARY: &str = "ashiato";
+pub const BINARY: &str = "ashiato";
 const DUCKDB_PACKAGE: &str = "libduckdb-sys";
-const DUCKDB_LIBRARY: &str = "libduckdb.so";
+pub const DUCKDB_LIBRARY: &str = "libduckdb.so";
 // https://doc.rust-lang.org/cargo/reference/build-scripts.html#rustc-link-search
 const SEARCH_KINDS: [&str; 5] = ["dependency", "crate", "native", "framework", "all"];
 
