@@ -211,7 +211,7 @@ fn single_partition(listing: S3Listing) -> PartitionManifest {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for MinIO; see docs/s3-testing.md"]
+#[ignore = "needs Docker for MinIO; see README.md"]
 async fn listing_finds_the_accounts_and_regions_of_the_organization_and_account_trails() {
     let minio = Minio::start();
     let trail = Trail::new();
@@ -326,7 +326,7 @@ async fn listing_finds_the_accounts_and_regions_of_the_organization_and_account_
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for MinIO; see docs/s3-testing.md"]
+#[ignore = "needs Docker for MinIO; see README.md"]
 async fn listing_a_bucket_without_versioning_records_no_version() {
     let minio = Minio::start();
     let trail = Trail::new();
@@ -350,7 +350,7 @@ async fn listing_a_bucket_without_versioning_records_no_version() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for MinIO; see docs/s3-testing.md"]
+#[ignore = "needs Docker for MinIO; see README.md"]
 async fn a_versioned_object_is_read_at_the_listed_version() {
     let minio = Minio::start();
     let trail = Trail::new();
@@ -388,7 +388,7 @@ async fn a_versioned_object_is_read_at_the_listed_version() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for MinIO; see docs/s3-testing.md"]
+#[ignore = "needs Docker for MinIO; see README.md"]
 async fn an_object_replaced_after_listing_stops_the_worker_without_versioning() {
     let minio = Minio::start();
     let trail = Trail::new();
@@ -432,7 +432,7 @@ async fn an_object_replaced_after_listing_stops_the_worker_without_versioning() 
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore = "needs Docker for MinIO; see docs/s3-testing.md"]
+#[ignore = "needs Docker for MinIO; see README.md"]
 async fn an_object_deleted_after_listing_stops_the_worker() {
     let minio = Minio::start();
     let trail = Trail::new();

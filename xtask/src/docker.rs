@@ -183,8 +183,9 @@ impl MinioSetup {
         self.exec(&["mc", "cat", &format!("local/{BUCKET}/{SUMMARY_FILE}")])
     }
 
-    // Versioning is enabled as in the S3 tests (docs/s3-testing.md), so that the runs read the
-    // listed versions. The summary goes last, so that its presence marks a complete upload.
+    // Versioning is enabled as in the S3 tests (crates/ashiato-ingest/tests/s3.rs), so that the
+    // runs read the listed versions. The summary goes last, so that its presence marks a complete
+    // upload.
     pub fn upload(&self) -> Vec<Vec<String>> {
         let bucket = format!("local/{BUCKET}");
         vec![

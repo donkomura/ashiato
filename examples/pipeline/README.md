@@ -13,7 +13,7 @@ docker pull nats:2.10.29
 docker pull bitnamilegacy/minio:2025.7.23
 ```
 
-NATS サーバーは 2.9.1 以降でなければならない。理由は `docs/nats-testing.md` に書いた。
+NATS サーバーは 2.9.1 以降でなければならない。サブジェクトごとの上限に達したときに新しいメッセージを拒否する設定（`discard_new_per_subject`）を 2.9.0 以前のサーバーは守らず、流量の制御が働かないためである。
 
 ## ファイル
 
@@ -122,7 +122,7 @@ jq -c 'select(.type == "signal") | {signal_id, severity, region, start_time}' wo
 - `rule_skipped`：実行しなかったルール。`reason` が `not_streamable` のルールは、`batch` の区切りごとには計算できない集計や、ベースラインの期間の参照を使うので、パイプラインでは実行しない（同じルールは `ashiato analyze` では実行できる）。`missing_data` のルールは、この例のログにない S3 のデータイベントを必要とする
 - `origin_score`：起点の主体（この例では `alice`）ごとの点数と、兆候の戦術。点数が閾値（既定値は 10）以上で、戦術が既定値で 3 種類以上あると `above_threshold` が `true` になる
 
-出力の読み方と絞り込みは、`docs/analysis-method.md` に書いた。
+出力の読み方と絞り込みは、リポジトリのルートの `README.md` に書いた。
 
 ## 片付け
 
