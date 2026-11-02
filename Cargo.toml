@@ -22,3 +22,28 @@ unsafe_code = "forbid"
 
 [workspace.lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[profile.ci]
+inherits = "dev"
+debug = "line-tables-only"
+
+[profile.ci.package."*"]
+debug = false
+
+[profile.ci.package.miniz_oxide]
+opt-level = 1
+
+[profile.ci.package.flate2]
+opt-level = 1
+
+[profile.ci.package.crc32fast]
+opt-level = 1
+
+[profile.ci.package.sha2]
+opt-level = 1
+
+[profile.ci.package.serde_json]
+opt-level = 1
+
+[profile.ci.package.memchr]
+opt-level = 1
